@@ -1,0 +1,42 @@
+{
+  "name": "elestio",
+  "version": "1.0.0",
+  "description": "Elestio CLI - Deploy and manage services on the Elestio DevOps platform",
+  "type": "module",
+  "main": "src/cli.js",
+  "bin": {
+    "elestio": "./bin/elestio.js"
+  },
+  "scripts": {
+    "start": "node bin/elestio.js"
+  },
+  "keywords": [
+    "elestio",
+    "cli",
+    "devops",
+    "deploy",
+    "cloud",
+    "hosting",
+    "managed",
+    "open-source"
+  ],
+  "author": "Elestio <support@elest.io>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elestio/elestio-cli"
+  },
+  "homepage": "https://elest.io",
+  "bugs": {
+    "url": "https://github.com/elestio/elestio-cli/issues"
+  }
+}

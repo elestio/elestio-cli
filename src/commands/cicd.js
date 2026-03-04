@@ -259,7 +259,7 @@ async function getCicdTargetInfo(vmID, projectId) {
 
 const RUNTIME_PRESETS = {
   'static': { runtime: 'staticSPA', buildDir: '/dist', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install', version: '20', containerPort: '3000' },
-  'node': { runtime: 'node', buildDir: '/', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install', version: '20', containerPort: '3000' },
+  'node': { runtime: 'NodeJs', buildDir: '/', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install', version: '20', containerPort: '3000' },
   'docker': { runtime: '', buildDir: '/', framework: '', buildCmd: '', runCmd: '', installCmd: '', version: '', containerPort: '80' }
 };
 
@@ -360,7 +360,7 @@ export function generatePipelineTemplate(mode = 'docker') {
     github: { CICDMode: 'GITHUB', pipelineName: 'REPLACE', projectID: 'REPLACE', ports: basePorts(), variables: '', cluster: baseCluster(), imageData: { isPipelineTemplate: false }, configData: { buildDir: '/dist', rootDir: '/', runtime: 'staticSPA', version: '20', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install' }, gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: 'https://github.com/OWNER/REPO', cloneUrl: 'https://github.com/OWNER/REPO.git', repoID: 'REPLACE', repo: 'OWNER/REPO' }, exposedPorts: baseExposedPorts(), isNeedToCreateRepo: false, isPublicGitRepo: 'false', gitVolumeConfig: [], isMovePipeline: false, nonRepoWorkSpaces: [''], gitUserFormData: {} }
   };
 
-  templates['github-fullstack'] = { ...templates.github, configData: { buildDir: '/', rootDir: '/', runtime: 'node', version: '20', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install' } };
+  templates['github-fullstack'] = { ...templates.github, configData: { buildDir: '/', rootDir: '/', runtime: 'NodeJs', version: '20', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install' } };
   templates.gitlab = { ...templates.github, CICDMode: 'GITLAB', gitData: { ...templates.github.gitData, repoUrl: 'https://gitlab.com/OWNER/REPO', cloneUrl: 'https://gitlab.com/OWNER/REPO.git' } };
   templates['gitlab-fullstack'] = { ...templates['github-fullstack'], CICDMode: 'GITLAB', gitData: { ...templates.github.gitData, repoUrl: 'https://gitlab.com/OWNER/REPO', cloneUrl: 'https://gitlab.com/OWNER/REPO.git' } };
 

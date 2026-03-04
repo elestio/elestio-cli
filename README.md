@@ -257,6 +257,8 @@ Credentials and config are stored in `~/.elestio/`:
 
 Get your API token from [Elestio Dashboard > Security](https://dash.elest.io/account/security).
 
+## Documentation 
+   https://docs.elest.io/books/elestio-cli-skill/page/overview
 ## License
 
 MIT

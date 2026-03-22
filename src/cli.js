@@ -759,7 +759,8 @@ export async function run(argv) {
                 buildDir: args['build-dir'], rootDir: args['root-dir'],
                 framework: args.framework, buildCmd: args['build-cmd'],
                 runCmd: args['run-cmd'], installCmd: args['install-cmd'],
-                nodeVersion: args['node-version'], variables: args.variables
+                nodeVersion: args['node-version'], variables: args.variables,
+                compose: args.compose
               });
             } else {
               await cicd.createPipeline(args._[2] || args.file);

@@ -251,16 +251,20 @@ async function getCicdTargetInfo(vmID, projectId) {
 
   return {
     displayName: target.displayName || target.name,
-    id: String(target.id || target.serverID),
+    id: target.id || target.serverID,
     serverName: target.serverName || '',
-    vmID: String(target.providerServerID || target.vmID)
+    vmID: String(target.providerServerID || target.vmID),
+    vmProvider: target.vmProvider || target.provider || '',
+    vmRegion: target.vmRegion || target.datacenter || '',
+    levelName: target.levelName || 'Elestio-services',
+    projectID: String(pid)
   };
 }
 
 const RUNTIME_PRESETS = {
   'static': { runtime: 'staticSPA', buildDir: '/dist', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install', version: '20', containerPort: '3000' },
   'node': { runtime: 'NodeJs', buildDir: '/', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install', version: '20', containerPort: '3000' },
-  'docker': { runtime: '', buildDir: '/', framework: '', buildCmd: '', runCmd: '', installCmd: '', version: '', containerPort: '80' }
+  'docker': { runtime: 'NodeJs', buildDir: '/', framework: 'NoFramework', buildCmd: '', runCmd: '', installCmd: '', version: '20', containerPort: '3000' }
 };
 
 export async function autoCreatePipeline(options = {}) {
@@ -310,24 +314,59 @@ export async function autoCreatePipeline(options = {}) {
   const branch = options.branch || 'main';
   const gitHost = gitType === 'GITLAB' ? 'gitlab.com' : 'github.com';
 
+  const defaultCompose = `services:\n  nginx:\n    image: nginx:alpine\n    ports:\n      - "172.17.0.1:${preset.containerPort}:80"\n    volumes:\n      - ./html:/usr/share/nginx/html:ro`;
+
   const payload = {
-    CICDMode: gitType || 'DOCKER',
-    pipelineName: options.name,
-    projectID: String(pid),
-    authID: authID ? String(authID) : '0',
-    ports: [{ protocol: 'HTTPS', targetProtocol: 'HTTP', listeningPort: '443', targetPort: '3000', public: true, targetIP: '172.17.0.1', path: '/', isAuth: false, login: '', password: '' }],
-    variables: options.variables || '',
     cluster: { isCluster: false, createNew: false, target },
-    imageData: gitType ? { isPipelineTemplate: false } : { imageName: options.image || 'nginx', imageTag: options.imageTag || 'alpine', registryUrl: '', isPipelineTemplate: false },
-    configData: { buildDir: options.buildDir || preset.buildDir, rootDir: options.rootDir || '/', runtime: preset.runtime, version: options.nodeVersion || preset.version, framework: options.framework || preset.framework, buildCmd: options.buildCmd || preset.buildCmd, runCmd: options.runCmd || preset.runCmd, installCmd: options.installCmd || preset.installCmd },
-    gitData: gitType ? { projectName: options.name, branch, repoUrl: `https://${gitHost}/${options.repo}`, cloneUrl: `https://${gitHost}/${options.repo}.git`, repoID: String(repoData.id), repo: options.repo.split('/')[1] } : { projectName: options.name, branch: 'main', repoUrl: '', cloneUrl: '', repoID: 0, repo: '' },
-    exposedPorts: [{ protocol: 'HTTP', hostPort: '3000', containerPort: preset.containerPort, interface: '172.17.0.1' }],
-    gitVolumeConfig: [],
-    isNeedToCreateRepo: !gitType,
-    isPublicGitRepo: repoData ? String(!repoData.private) : 'false',
+    gitData: gitType ? { projectName: options.name, branch, repoUrl: `https://${gitHost}/${options.repo}`, cloneUrl: `https://${gitHost}/${options.repo}.git`, repoID: String(repoData.id), repo: options.repo.split('/')[1] } : {},
+    imageData: gitType
+      ? { isPipelineTemplate: false }
+      : { isPrivate: false, compose: options.compose || defaultCompose, dockerExample: '', repoName: 'CustomDocker' },
+    configData: {
+      buildDir: options.buildDir || preset.buildDir,
+      rootDir: options.rootDir || '/',
+      runTime: preset.runtime,
+      buildCmd: options.buildCmd || preset.buildCmd,
+      runCmd: options.runCmd || preset.runCmd,
+      installCmd: options.installCmd || preset.installCmd,
+      framework: options.framework || preset.framework,
+      version: options.nodeVersion || preset.version
+    },
+    ports: [{
+      protocol: 'HTTPS', targetProtocol: 'HTTP', listeningPort: '443',
+      targetPort: parseInt(preset.containerPort) + 1, public: true,
+      targetIP: '172.17.0.1', path: '/', isAuth: false,
+      login: '', password: '', loginTitle: ''
+    }],
+    variables: options.variables || '',
+    isPublicGitRepo: repoData ? !repoData.private : false,
+    exposedPorts: [{ protocol: 'HTTP', hostPort: preset.containerPort, containerPort: preset.containerPort, interface: '172.17.0.1' }],
+    gitVolumeConfig: [{}],
+    isNeedToCreateRepo: false,
+    gitUserFormData: {
+      selectedUser: '', searchGitUser: '',
+      gitOrgsFilteredList: { GITHUB: [], GITLAB: [] },
+      gitOrgsList: [], selectedRepo: {},
+      thirdPartyRepoInput: '', gitScopesUsers: [],
+      thirdPartyRepoScopeName: '',
+      getGitScopeUser: { GITHUB: [], GITLAB: [] },
+      thirdPartyRepoName: '', thirdPartyRepoPrivate: false,
+      loadSearch: false
+    },
+    lifeCycleCommand: {
+      preInstallCommand: '', postInstallCommand: '',
+      preBackupCommand: '', postBackupCommand: '',
+      preRestoreCommand: '', postRestoreCommand: '',
+      preUpdateCommand: '', postUpdateCommand: '',
+      preDeployCommand: '', postDeployCommand: ''
+    },
+    monoRepoWorkSpaces: [''],
+    copyCommandConfig: [],
+    CICDMode: gitType || 'DockerCompose',
+    projectID: String(pid),
+    pipelineName: options.name,
     isMovePipeline: false,
-    nonRepoWorkSpaces: [''],
-    gitUserFormData: {}
+    authID: authID ? String(authID) : null
   };
 
   log('info', 'Creating pipeline...');
@@ -342,8 +381,8 @@ export async function autoCreatePipeline(options = {}) {
 
 // ── Pipeline Template Generator ──
 
-function basePorts(targetPort = '3000') {
-  return [{ protocol: 'HTTPS', targetProtocol: 'HTTP', listeningPort: '443', targetPort, public: true, targetIP: '172.17.0.1', path: '/', isAuth: false, login: '', password: '' }];
+function basePorts(targetPort = 3001) {
+  return [{ protocol: 'HTTPS', targetProtocol: 'HTTP', listeningPort: '443', targetPort, public: true, targetIP: '172.17.0.1', path: '/', isAuth: false, login: '', password: '', loginTitle: '' }];
 }
 
 function baseExposedPorts(hostPort = '3000', containerPort = '3000') {
@@ -351,16 +390,58 @@ function baseExposedPorts(hostPort = '3000', containerPort = '3000') {
 }
 
 function baseCluster() {
-  return { isCluster: false, createNew: false, target: { displayName: 'REPLACE', id: 'REPLACE', serverName: 'REPLACE', vmID: 'REPLACE' } };
+  return { isCluster: false, createNew: false, target: { displayName: 'REPLACE', id: 'REPLACE', serverName: 'REPLACE', vmID: 'REPLACE', vmProvider: 'REPLACE', vmRegion: 'REPLACE', levelName: 'Elestio-services', projectID: 'REPLACE' } };
+}
+
+function baseLifeCycleCommand() {
+  return {
+    preInstallCommand: '', postInstallCommand: '',
+    preBackupCommand: '', postBackupCommand: '',
+    preRestoreCommand: '', postRestoreCommand: '',
+    preUpdateCommand: '', postUpdateCommand: '',
+    preDeployCommand: '', postDeployCommand: ''
+  };
+}
+
+function baseGitUserFormData() {
+  return {
+    selectedUser: '', searchGitUser: '',
+    gitOrgsFilteredList: { GITHUB: [], GITLAB: [] },
+    gitOrgsList: [], selectedRepo: {},
+    thirdPartyRepoInput: '', gitScopesUsers: [],
+    thirdPartyRepoScopeName: '',
+    getGitScopeUser: { GITHUB: [], GITLAB: [] },
+    thirdPartyRepoName: '', thirdPartyRepoPrivate: false,
+    loadSearch: false
+  };
 }
 
 export function generatePipelineTemplate(mode = 'docker') {
+  const defaultCompose = 'services:\n  nginx:\n    image: nginx:alpine\n    ports:\n      - "172.17.0.1:3000:80"\n    volumes:\n      - ./html:/usr/share/nginx/html:ro';
+
   const templates = {
-    docker: { CICDMode: 'DOCKER', pipelineName: 'REPLACE', projectID: 'REPLACE', ports: basePorts(), variables: '', cluster: baseCluster(), imageData: { imageName: 'nginx', imageTag: 'alpine', registryUrl: '', isPipelineTemplate: false }, configData: { buildDir: '/', rootDir: '/', runtime: '', version: '', framework: '', buildCmd: '', runCmd: '', installCmd: '' }, gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: '', cloneUrl: '', repoID: 0, repo: '' }, exposedPorts: baseExposedPorts('3000', '80'), isNeedToCreateRepo: true, gitVolumeConfig: [], isMovePipeline: false, nonRepoWorkSpaces: [''], gitUserFormData: {} },
-    github: { CICDMode: 'GITHUB', pipelineName: 'REPLACE', projectID: 'REPLACE', ports: basePorts(), variables: '', cluster: baseCluster(), imageData: { isPipelineTemplate: false }, configData: { buildDir: '/dist', rootDir: '/', runtime: 'staticSPA', version: '20', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install' }, gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: 'https://github.com/OWNER/REPO', cloneUrl: 'https://github.com/OWNER/REPO.git', repoID: 'REPLACE', repo: 'OWNER/REPO' }, exposedPorts: baseExposedPorts(), isNeedToCreateRepo: false, isPublicGitRepo: 'false', gitVolumeConfig: [], isMovePipeline: false, nonRepoWorkSpaces: [''], gitUserFormData: {} }
+    docker: {
+      cluster: baseCluster(), gitData: {}, imageData: { isPrivate: false, compose: defaultCompose, dockerExample: '', repoName: 'CustomDocker' },
+      configData: { buildDir: '/', rootDir: '/', runTime: 'NodeJs', buildCmd: '', runCmd: '', installCmd: '', framework: 'NoFramework', version: '20' },
+      ports: basePorts(), variables: '', isPublicGitRepo: false,
+      exposedPorts: baseExposedPorts('3000', '3000'), gitVolumeConfig: [{}], isNeedToCreateRepo: false,
+      gitUserFormData: baseGitUserFormData(), lifeCycleCommand: baseLifeCycleCommand(),
+      monoRepoWorkSpaces: [''], copyCommandConfig: [],
+      CICDMode: 'DockerCompose', projectID: 'REPLACE', pipelineName: 'REPLACE', isMovePipeline: false, authID: null
+    },
+    github: {
+      cluster: baseCluster(), gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: 'https://github.com/OWNER/REPO', cloneUrl: 'https://github.com/OWNER/REPO.git', repoID: 'REPLACE', repo: 'OWNER/REPO' },
+      imageData: { isPipelineTemplate: false },
+      configData: { buildDir: '/dist', rootDir: '/', runTime: 'staticSPA', version: '20', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install' },
+      ports: basePorts(), variables: '', isPublicGitRepo: false,
+      exposedPorts: baseExposedPorts(), gitVolumeConfig: [{}], isNeedToCreateRepo: false,
+      gitUserFormData: baseGitUserFormData(), lifeCycleCommand: baseLifeCycleCommand(),
+      monoRepoWorkSpaces: [''], copyCommandConfig: [],
+      CICDMode: 'GITHUB', projectID: 'REPLACE', pipelineName: 'REPLACE', isMovePipeline: false, authID: 'REPLACE'
+    }
   };
 
-  templates['github-fullstack'] = { ...templates.github, configData: { buildDir: '/', rootDir: '/', runtime: 'NodeJs', version: '20', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install' } };
+  templates['github-fullstack'] = { ...templates.github, configData: { buildDir: '/', rootDir: '/', runTime: 'NodeJs', version: '20', framework: 'No Framework', buildCmd: 'npm run build', runCmd: 'npm start', installCmd: 'npm install' } };
   templates.gitlab = { ...templates.github, CICDMode: 'GITLAB', gitData: { ...templates.github.gitData, repoUrl: 'https://gitlab.com/OWNER/REPO', cloneUrl: 'https://gitlab.com/OWNER/REPO.git' } };
   templates['gitlab-fullstack'] = { ...templates['github-fullstack'], CICDMode: 'GITLAB', gitData: { ...templates.github.gitData, repoUrl: 'https://gitlab.com/OWNER/REPO', cloneUrl: 'https://gitlab.com/OWNER/REPO.git' } };
 

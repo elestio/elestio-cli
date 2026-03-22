@@ -1,6 +1,6 @@
 {
   "name": "elestio",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Elestio CLI - Deploy and manage services on the Elestio DevOps platform",
   "type": "module",
   "main": "src/cli.js",

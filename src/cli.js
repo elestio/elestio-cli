@@ -776,7 +776,16 @@ export async function run(argv) {
             await cicd.getDockerRegistries(args.project, json);
             break;
           case 'registry-add':
-            await cicd.addDockerRegistry(args.project, args.name || args._[2], args.username || args._[3], args.password, args.url);
+            await cicd.addDockerRegistry(
+              args.project,
+              args.name || args._[2],
+              args.username || args._[3],
+              args.password,
+              args.url,
+              args['registry-type'] || args.registryType || 'docker.io',
+              args['repo-id'] || args.repoId || '',
+              args['gitlab-url'] || args.gitlabUrl || ''
+            );
             break;
           default:
             showHelp('cicd', {
@@ -796,7 +805,7 @@ export async function run(argv) {
               'domain-add <vmID> --pipeline <id> --domain <d>': 'Add a domain',
               'domain-remove <vmID> --pipeline <id> --domain <d>': 'Remove a domain',
               'registries': 'List Docker registries',
-              'registry-add --name <n> --username <u> --password <p> --url <url>': 'Add Docker registry'
+              'registry-add --name <n> --username <u> --password <p> --url <repo> [--registry-type <type>] [--repo-id <id>] [--gitlab-url <host>]': 'Add Docker registry (types: docker.io, registry.gitlab.com, gitlab-self-hosted, ghcr.io)'
             });
         }
         break;

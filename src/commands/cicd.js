@@ -455,12 +455,14 @@ export function generatePipelineTemplate(mode = 'docker') {
 
 // ── Docker Registries ──
 
-export async function addDockerRegistry(projectId, identityName, username, password, url) {
+export async function addDockerRegistry(projectId, identityName, username, password, url, registryType = 'docker.io', repoId = '', gitlabUrl = '') {
   const config = loadConfig();
   const pid = projectId || config.defaultProject;
 
-  const response = await apiRequest('/api/cicd/addDockerRegistry', 'POST', { projectID: String(pid), identityName, username, password, url });
-  if (response.status !== 'OK') throw new Error(response.message || 'Failed');
+  const payload = { projectID: String(pid), identityName, username, password, url, registryType, repoID: repoId, gitlabUrl };
+  const response = await apiRequest('/api/cicd/addDockerRegistry', 'POST', payload);
+  if (response.status === 'KO') throw new Error(response.message || 'Failed');
+  if (!response.id) throw new Error(response.message || 'Failed');
 
   log('success', `Docker registry "${identityName}" added`);
   return response;

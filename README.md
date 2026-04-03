@@ -229,7 +229,22 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | `elestio cicd template [mode]` | Generate config template |
 | `elestio cicd domains <vmID> <pipelineID>` | List pipeline domains |
 | `elestio cicd registries` | List Docker registries |
-| `elestio cicd registry-add --name X --username U --password P --url URL` | Add registry |
+| `elestio cicd registry-add --name X --username U --password P --url REPO` | Add Docker Hub registry |
+| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type registry.gitlab.com --repo-id ID` | Add GitLab.com registry |
+| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type gitlab-self-hosted --repo-id ID --gitlab-url gitlab.company.com` | Add self-hosted GitLab registry |
+| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type ghcr.io` | Add GitHub Container Registry |
+
+**`registry-add` options:**
+
+| Option | Description |
+|--------|-------------|
+| `--name` | Unique identity nickname for the registry credential |
+| `--username` | Registry username |
+| `--password` | Registry password or access token |
+| `--url` | Repository path (e.g. `myuser/myrepo`) — **not** the registry host |
+| `--registry-type` | Registry host: `docker.io` (default), `registry.gitlab.com`, `gitlab-self-hosted`, `ghcr.io` |
+| `--repo-id` | GitLab project/repo ID — required for `registry.gitlab.com` and `gitlab-self-hosted` |
+| `--gitlab-url` | Self-hosted GitLab hostname (e.g. `gitlab.company.com`) — required for `gitlab-self-hosted` |
 
 ### Billing
 

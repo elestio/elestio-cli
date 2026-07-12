@@ -204,6 +204,8 @@ export async function createPipeline(configFile) {
   if (!configFile || !fs.existsSync(configFile)) throw new Error(`Config file not found: ${configFile}`);
 
   const pipelineConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  // Backend runs variables.trim(); it must be a string.
+  if (typeof pipelineConfig.variables !== 'string') pipelineConfig.variables = '';
   log('info', 'Creating pipeline...');
   const response = await apiRequest('/api/cicd/createCiCdExistServer', 'POST', pipelineConfig);
 
@@ -338,7 +340,7 @@ export async function autoCreatePipeline(options = {}) {
       targetIP: '172.17.0.1', path: '/', isAuth: false,
       login: '', password: '', loginTitle: ''
     }],
-    variables: options.variables || '',
+    variables: typeof options.variables === 'string' ? options.variables : '',
     isPublicGitRepo: repoData ? !repoData.private : false,
     exposedPorts: [{ protocol: 'HTTP', hostPort: preset.containerPort, containerPort: preset.containerPort, interface: '172.17.0.1' }],
     gitVolumeConfig: [{}],

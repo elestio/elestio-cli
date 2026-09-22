@@ -115,8 +115,8 @@ export function formatBytes(bytes) {
 
 export function formatPrice(pricePerHour) {
   const hourly = parseFloat(pricePerHour);
-  const monthly = (hourly * 24 * 30).toFixed(2);
-  return `$${monthly}/mo`;
+  if (!Number.isFinite(hourly)) return 'N/A';
+  return `$${(hourly * 24 * 30).toFixed(2)}/mo`;
 }
 
 export function validateServerName(name) {

@@ -139,7 +139,7 @@ export async function deployService(templateNameOrId, options = {}) {
   const payload = buildCreateServerPayload({
     template, projectId, serverName, serverType, datacenter, provider,
     support, adminEmail, version, serviceType, cluster,
-    pipelineName: options.pipelineName
+    pipelineName: options.pipelineName, cicdMode: options.cicdMode
   });
 
   if (options.dryRun) {

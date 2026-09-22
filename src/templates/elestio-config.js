@@ -163,3 +163,26 @@ function normalizeDir(dir, fallback) {
 }
 
 export { EMPTY_LIFECYCLE };
+
+/**
+ * Bind mounts whose source is a file that lives in the template repo.
+ *
+ * Without a repo checkout Docker creates the missing source as a *directory*,
+ * and the container then fails to start with "not a directory". n8n hits this
+ * on ./n8n-task-runners.json. Directory mounts (./db_data) are fine: Docker
+ * creating them empty is exactly what is wanted.
+ *
+ * A source is treated as a file when its last segment has an extension, which
+ * is what tells ./n8n-task-runners.json apart from ./redis_data.
+ */
+export function repoFileMounts(compose) {
+  if (typeof compose !== 'string') return [];
+
+  const mounts = new Set();
+  for (const match of compose.matchAll(/^\s*-\s+(\.{1,2}\/[^\s:]+):[^\s]+/gm)) {
+    const source = match[1];
+    const lastSegment = source.slice(source.lastIndexOf('/') + 1);
+    if (/\.[A-Za-z0-9]{1,10}$/.test(lastSegment)) mounts.add(source);
+  }
+  return [...mounts];
+}

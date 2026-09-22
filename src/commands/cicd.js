@@ -143,13 +143,29 @@ export async function getPipelineLogs(vmID, pipelineID, projectId) {
 
 export async function getPipelineHistory(vmID, pipelineID, projectId, json = false) {
   const result = await doActionOnPipeline(vmID, pipelineID, 'getHistory', {}, projectId);
-  const history = result.data?.history || result.history || [];
+  // The action answers {data: [...]}, not the {data: {history: [...]}} shape
+  // the other endpoints use, so history never rendered.
+  const history = Array.isArray(result.data) ? result.data : (result.data?.history || result.history || []);
   if (json) { outputJson(history); return history; }
   if (history.length === 0) { log('info', 'No build history'); return []; }
 
+  const rows = history.map(h => ({
+    status: h.status || 'N/A',
+    action: h.action || 'N/A',
+    duration: h.duration !== undefined ? `${h.duration}s` : 'N/A',
+    startTime: h.startTime ? new Date(h.startTime).toISOString().replace('T', ' ').slice(0, 19) : 'N/A',
+    log: h.logID || h.filepath || h.file || 'N/A'
+  }));
+
   console.log(`\n${colors.bold}Build History${colors.reset}\n`);
-  history.forEach(h => console.log(`  ${h.filepath || h.file}: ${h.status || 'N/A'}`));
-  console.log('');
+  console.log(formatTable(rows, [
+    { key: 'status', label: 'Status' },
+    { key: 'action', label: 'Action' },
+    { key: 'duration', label: 'Duration' },
+    { key: 'startTime', label: 'Started' },
+    { key: 'log', label: 'Log file' }
+  ]));
+  console.log(`\n  Read one with: ${colors.cyan}elestio cicd pipeline-log ${vmID} --pipeline ${pipelineID} --file <log file>${colors.reset}\n`);
   return history;
 }
 

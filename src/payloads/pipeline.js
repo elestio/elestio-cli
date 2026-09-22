@@ -149,6 +149,12 @@ export function buildGitPipelinePayload({
 
 /**
  * Pipeline running an inline docker-compose file, with no Git repo attached.
+ *
+ * Lifecycle hooks are deliberately dropped. There is no checkout, so the paths
+ * in elestio.yml do not exist, and the deployment agent chmods them before it
+ * runs anything: sending them fails the build with
+ * "chmod: cannot access './scripts/preInstall.sh'" before docker compose is
+ * even reached. Sending none lets the stack come up.
  */
 export function buildComposePipelinePayload({
   target, projectId, pipelineName, compose, elestioConfig, overrides = {}
@@ -168,7 +174,7 @@ export function buildComposePipelinePayload({
     ports: overrides.ports || fromFile?.ports,
     exposedPorts: overrides.exposedPorts || fromFile?.exposedPorts,
     variables: overrides.variables ?? fromFile?.variables ?? '',
-    lifeCycleCommand: fromFile?.lifeCycleCommand,
+    lifeCycleCommand: {},
     copyCommandConfig: fromFile?.copyCommandConfig || [],
     authID: null,
     isPublicGitRepo: false,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeElestioConfig, environmentsToVariables, substitute,
-  generateAppPassword, generateShortPassword, createSubstitutions
+  generateAppPassword, generateShortPassword, createSubstitutions, repoFileMounts
 } from '../src/templates/elestio-config.js';
 
 const subs = { password: 'PWD-abc-123', shortPassword: 'SHORT-42', email: 'dev@example.com' };
@@ -149,5 +149,67 @@ describe('password generators', () => {
 
   it('createSubstitutions tolerates a missing email', () => {
     expect(createSubstitutions(undefined).email).toBe('');
+  });
+});
+
+describe('repoFileMounts', () => {
+  it('flags a bind-mounted repo file', () => {
+    // n8n: this exact mount fails the build with runc's "not a directory"
+    // because Docker creates the missing source as an empty directory.
+    const compose = `
+services:
+  n8n:
+    volumes:
+      - ./n8n:/home/node/.n8n
+      - ./n8n-task-runners.json:/etc/n8n-task-runners.json`;
+    expect(repoFileMounts(compose)).toEqual(['./n8n-task-runners.json']);
+  });
+
+  it('ignores directory mounts, which Docker can safely create', () => {
+    const compose = `
+services:
+  db:
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+      - ./redis_data:/data`;
+    expect(repoFileMounts(compose)).toEqual([]);
+  });
+
+  it('deduplicates a file mounted by several services', () => {
+    const compose = `
+services:
+  a:
+    volumes:
+      - ./config.json:/etc/config.json
+  b:
+    volumes:
+      - ./config.json:/etc/config.json`;
+    expect(repoFileMounts(compose)).toEqual(['./config.json']);
+  });
+
+  it('finds files in subdirectories', () => {
+    // rybbit mounts four of these
+    const compose = `
+services:
+  ch:
+    volumes:
+      - ./configs/network.xml:/etc/clickhouse-server/config.d/network.xml`;
+    expect(repoFileMounts(compose)).toEqual(['./configs/network.xml']);
+  });
+
+  it('ignores named volumes and absolute paths', () => {
+    const compose = `
+services:
+  a:
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro`;
+    expect(repoFileMounts(compose)).toEqual([]);
+  });
+
+  it('tolerates a missing or non-string compose', () => {
+    expect(repoFileMounts(undefined)).toEqual([]);
+    expect(repoFileMounts(null)).toEqual([]);
+    expect(repoFileMounts('')).toEqual([]);
   });
 });

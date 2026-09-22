@@ -239,6 +239,8 @@ export const registry = {
       { name: '--cluster', summary: 'Deploy as a cluster instead of a single node' },
       { name: '--nodes <n>', summary: 'Total nodes, primary included (default: the template minimum)' },
       { name: '--cluster-mode <mode>', summary: 'primary-replica (default) or multi-master' },
+      { name: '--pipeline-name <n>', summary: 'CI/CD targets: first pipeline name (max 24 chars, [a-z0-9-])' },
+      { name: '--cicd-mode <mode>', summary: 'CI/CD targets: DockerCompose (default), GITHUB, GITLAB, GITLAB_SELF_HOSTED' },
       { name: '--dry-run', summary: 'Print what would be created, create nothing' },
       { name: '--wait false', summary: 'Return without waiting for the deployment' }
     ],
@@ -256,7 +258,7 @@ export const registry = {
         support: args.support, email: args.email,
         version: args.version, dryRun: !!args['dry-run'],
         wait: args.wait !== 'false', timeout: args.timeout ? parseInt(args.timeout) : undefined,
-        json, pipelineName: args['pipeline-name'],
+        json, pipelineName: args['pipeline-name'], cicdMode: args['cicd-mode'],
         cluster: !!args.cluster,
         nodes: args.nodes !== undefined ? Number(args.nodes) : undefined,
         clusterMode: args['cluster-mode']
@@ -510,7 +512,7 @@ export const registry = {
     async run({ args, json }) {
       const access = await load.access();
       const vmID = requireArg(args._[1], 'ssh <vmID>');
-      if (args.direct) await access.getSSHDirect(vmID, json);
+      if (args.direct) await access.getSSHDirect(vmID, args.project, json);
       else await access.getSSH(vmID, args.project, json);
     }
   },
@@ -573,7 +575,7 @@ export const registry = {
             buildCmd: args['build-cmd'], runCmd: args['run-cmd'],
             installCmd: args['install-cmd'], buildDir: args['build-dir'],
             variables: args.variables,
-            dryRun: !!args['dry-run'], json
+            dryRun: !!args['dry-run'], force: !!args.force, json
           });
         }
       },

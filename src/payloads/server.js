@@ -1,5 +1,5 @@
 import {
-  CLUSTER_MAX_NODES, CLUSTER_MODES,
+  CLUSTER_MAX_NODES, CLUSTER_MODES, CICD_MODES,
   minClusterNodes, supportsClustering, supportsMultiMaster
 } from '../constants.js';
 
@@ -84,7 +84,7 @@ export function buildCreateServerPayload(opts) {
   };
 
   if (serviceType === 'CICD') {
-    payload.cicdPayload = { pipelineName: pipelineName || serverName };
+    payload.cicdPayload = buildCicdPayload(pipelineName || serverName, opts.cicdMode);
   }
 
   if (cluster) {
@@ -94,6 +94,28 @@ export function buildCreateServerPayload(opts) {
   }
 
   return payload;
+}
+
+/**
+ * createServer rejects a CI/CD target whose cicdPayload is incomplete. It needs
+ * both a pipelineName and a CICDMode, and the name has its own rules that the
+ * API only reports after the request is on the wire.
+ */
+export function buildCicdPayload(pipelineName, cicdMode = 'DockerCompose') {
+  const name = String(pipelineName).replace(/\s/g, '').replaceAll('_', '-');
+
+  if (!/^[a-z0-9-]+$/.test(name) || name.length > 24) {
+    throw new Error(
+      `Invalid pipeline name "${pipelineName}". Use at most 24 characters, ` +
+      'lowercase letters, digits and hyphens only.'
+    );
+  }
+
+  if (!CICD_MODES.includes(cicdMode)) {
+    throw new Error(`Unknown CI/CD mode "${cicdMode}". Expected one of: ${CICD_MODES.join(', ')}`);
+  }
+
+  return { pipelineName: name, CICDMode: cicdMode };
 }
 
 /**

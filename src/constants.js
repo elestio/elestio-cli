@@ -62,6 +62,9 @@ export function supportsMultiMaster(templateId) {
 
 export const CICD_TARGET_TEMPLATE_ID = 234;
 
+// Accepted by createServer's cicdPayload.CICDMode and by createCiCdExistServer.
+export const CICD_MODES = ['GITHUB', 'GITLAB', 'GITLAB_SELF_HOSTED', 'DockerCompose'];
+
 // Where `elestio cicd deploy-template` sources catalog software from.
 export const TEMPLATE_REPO_OWNER = 'elestio-examples';
 export const TEMPLATE_REPO_HOST = 'https://github.com';

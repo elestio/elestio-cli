@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPipelinePayload, buildGitPipelinePayload, buildComposePipelinePayload, DEFAULT_COMPOSE } from '../src/payloads/pipeline.js';
-import { buildCreateServerPayload, validateClusterOptions, describeCluster } from '../src/payloads/server.js';
+import { buildCreateServerPayload, buildCicdPayload, validateClusterOptions, describeCluster } from '../src/payloads/server.js';
 import { normalizeElestioConfig } from '../src/templates/elestio-config.js';
 
 const target = {
@@ -109,7 +109,7 @@ describe('buildComposePipelinePayload', () => {
     expect(() => buildComposePipelinePayload({ target, projectId: '1', pipelineName: 'x' })).toThrow(/compose/i);
   });
 
-  it('carries env vars and lifecycle hooks from elestio.yml', () => {
+  it('carries env vars from elestio.yml, but not lifecycle hooks', () => {
     const cfg = normalizeElestioConfig({
       environments: [{ key: 'ADMIN_PASSWORD', value: 'random_password' }],
       lifeCycleConfig: { postInstallCommand: './scripts/postInstall.sh' }
@@ -117,7 +117,9 @@ describe('buildComposePipelinePayload', () => {
 
     const p = buildComposePipelinePayload({ target, projectId: '1', pipelineName: 'x', compose: 'services: {}', elestioConfig: cfg });
     expect(p.variables).toBe('ADMIN_PASSWORD=PWD');
-    expect(p.lifeCycleCommand.postInstallCommand).toBe('./scripts/postInstall.sh');
+    // There is no checkout for the script to live in; see the dedicated
+    // describe block below for why sending it fails the build outright.
+    expect(p.lifeCycleCommand.postInstallCommand).toBe('');
   });
 });
 
@@ -198,9 +200,12 @@ describe('buildCreateServerPayload', () => {
     expect(p.isReplica).toBe(true);
   });
 
-  it('adds cicdPayload for a CI/CD target', () => {
+  it('adds a complete cicdPayload for a CI/CD target', () => {
+    // createServer rejects the request with "key 'CICDMode' is required in
+    // 'cicdPayload'" when the mode is missing, which is why the target
+    // deployment never worked.
     const p = buildCreateServerPayload({ ...opts, serviceType: 'CICD', pipelineName: 'my-pipeline' });
-    expect(p.cicdPayload).toEqual({ pipelineName: 'my-pipeline' });
+    expect(p.cicdPayload).toEqual({ pipelineName: 'my-pipeline', CICDMode: 'DockerCompose' });
   });
 
   it('stringifies templateID and projectId', () => {
@@ -216,5 +221,54 @@ describe('describeCluster', () => {
     expect(describeCluster({ nodes: 2, isReplica: true })).toBe('1 primary + 1 replica (2 VMs)');
     expect(describeCluster({ nodes: 3, isReplica: true })).toBe('1 primary + 2 replicas (3 VMs)');
     expect(describeCluster({ nodes: 2, isReplica: false })).toBe('2 primaries, multi-master (2 VMs)');
+  });
+});
+
+describe('compose route drops lifecycle hooks', () => {
+  it('sends no lifecycle commands even when elestio.yml declares them', () => {
+    // Verified live: sending './scripts/preInstall.sh' with no checkout fails
+    // the build at "chmod: cannot access" before docker compose runs.
+    // vaultwarden went from failed to success on this change alone.
+    const cfg = normalizeElestioConfig({
+      lifeCycleConfig: { preInstallCommand: './scripts/preInstall.sh', postInstallCommand: './scripts/postInstall.sh' },
+      environments: [{ key: 'ADMIN_PASSWORD', value: 'random_password' }]
+    }, { password: 'PWD', shortPassword: 's', email: 'e' });
+
+    const p = buildComposePipelinePayload({ target, projectId: '1', pipelineName: 'x', compose: 'services: {}', elestioConfig: cfg });
+    expect(Object.values(p.lifeCycleCommand).filter(Boolean)).toEqual([]);
+    expect(p.variables).toBe('ADMIN_PASSWORD=PWD');
+  });
+
+  it('still sends lifecycle hooks on the git route, which has a checkout', () => {
+    const cfg = normalizeElestioConfig({
+      lifeCycleConfig: { preInstallCommand: './scripts/preInstall.sh' }
+    }, { password: 'p', shortPassword: 's', email: 'e' });
+
+    const p = buildGitPipelinePayload({
+      target, projectId: '1', pipelineName: 'x', gitType: 'GITHUB',
+      repo: 'acme/x', branch: 'main', repoID: 1, elestioConfig: cfg
+    });
+    expect(p.lifeCycleCommand.preInstallCommand).toBe('./scripts/preInstall.sh');
+  });
+});
+
+describe('buildCicdPayload', () => {
+  it('always sends CICDMode: createServer rejects a target without it', () => {
+    expect(buildCicdPayload('my-target')).toEqual({ pipelineName: 'my-target', CICDMode: 'DockerCompose' });
+  });
+
+  it('normalises underscores and whitespace like the backend does', () => {
+    expect(buildCicdPayload('my_target name').pipelineName).toBe('my-targetname');
+  });
+
+  it('rejects names the API would reject after the request is on the wire', () => {
+    expect(() => buildCicdPayload('My-Target')).toThrow(/Invalid pipeline name/);
+    expect(() => buildCicdPayload('a'.repeat(25))).toThrow(/Invalid pipeline name/);
+    expect(() => buildCicdPayload('bad name!')).toThrow(/Invalid pipeline name/);
+  });
+
+  it('rejects an unknown CI/CD mode', () => {
+    expect(() => buildCicdPayload('x', 'SVN')).toThrow(/Unknown CI\/CD mode/);
+    expect(buildCicdPayload('x', 'GITHUB').CICDMode).toBe('GITHUB');
   });
 });

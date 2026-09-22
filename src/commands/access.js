@@ -71,22 +71,35 @@ export async function getSSH(vmID, projectId = null, json = false) {
   return response;
 }
 
-export async function getSSHDirect(vmID, json = false) {
-  const response = await apiRequest('/api/servers/startSSHDirect', 'POST', { vmID: String(vmID) });
-  if (response.status !== 'OK' && !response.ip) throw new Error(response.message || 'Failed to get SSH info');
+/**
+ * `--direct` prints the details for connecting with a local ssh client.
+ *
+ * These come from the service record: /api/servers/startSSHDirect returns a
+ * browser terminal URL, not host/port/user, so it cannot answer this.
+ */
+export async function getSSHDirect(vmID, projectId = null, json = false) {
+  const config = loadConfig();
+  const pid = projectId || config.defaultProject;
+  if (!pid) throw new Error('Project ID required');
 
-  if (json) {
-    outputJson({ host: response.ip || response.host, port: response.port || 22, user: response.user || 'root' });
-    return response;
-  }
+  const service = await getServiceDetails(vmID, pid);
+  if (!service) throw new Error(`Service with vmID ${vmID} not found`);
+
+  const host = service.ipv4 || service.cname;
+  if (!host) throw new Error(`Service ${vmID} has no IP yet; it may still be deploying`);
+
+  const details = { host, port: 22, user: 'root', command: `ssh root@${host}` };
+
+  if (json) { outputJson(details); return details; }
 
   console.log(`\n${colors.bold}Direct SSH${colors.reset}\n`);
-  console.log(`  Host: ${response.ip || response.host || 'N/A'}`);
-  console.log(`  Port: ${response.port || 22}`);
-  console.log(`  User: ${response.user || 'root'}`);
-  console.log(`\n  ${colors.dim}ssh ${response.user || 'root'}@${response.ip || response.host} -p ${response.port || 22}${colors.reset}`);
+  console.log(`  Host: ${host}`);
+  console.log(`  Port: 22`);
+  console.log(`  User: root`);
+  console.log(`\n  ${colors.cyan}${details.command}${colors.reset}`);
+  console.log(`\n  ${colors.dim}Add your key first: elestio ssh-keys add ${vmID} --name <n> --key "$(awk '{print $1" "$2}' ~/.ssh/id_ed25519.pub)"${colors.reset}`);
   console.log('');
-  return response;
+  return details;
 }
 
 export async function getVSCode(vmID, projectId = null, json = false) {

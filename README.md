@@ -320,17 +320,25 @@ domain.
 |---|---|---|
 | What it does | Inlines the template's `docker-compose.yml` | Generates the template repo into your Git account, then builds from it |
 | Needs a Git account | No | Yes, connected in the dashboard |
-| Lifecycle scripts | **Skipped** | Run |
-| Good for | Most deployments, automation, agents | Software with `preInstall`/`postInstall` hooks; when you want to edit the code |
+| Lifecycle scripts | Skipped | Run |
+| Repo files the compose mounts | Unavailable | Available |
+| Works for | Templates that need no files from the repo | Every template |
 
-The CLI warns you when the compose route is used on a template that declares
-lifecycle scripts, because that software may fail to start.
+The compose route has no checkout, so a template whose `docker-compose.yml`
+bind-mounts a file from its repo cannot work: Docker creates the missing source
+as an empty directory and the container fails to start. The CLI detects this
+from the compose file and refuses upfront, naming the files, rather than
+letting the build fail a minute later with a `runc` error. `--force` overrides.
+
+This affects more templates than you would expect - n8n
+(`./n8n-task-runners.json`), Rybbit (four files under `./configs/`) and
+WordPress (`./php.ini`) are all in this category. Vaultwarden, Redis and
+Metabase deploy cleanly on the compose route.
 
 > **The git route is currently unavailable.** It needs
 > `POST /api/cicd/createRepoByTemplate`, which the Elestio API returns 404 for:
 > the controller exists in the backend but is not registered in its route
 > whitelist. The CLI reports this explicitly instead of surfacing a bare 404.
-> Until it is fixed, use the compose route.
 
 | Command | Description |
 |---------|-------------|
@@ -443,11 +451,12 @@ software: it reads the template's `elestio.yml` for ports, environment
 variables and lifecycle hooks. `cicd create` builds a bare pipeline and expects
 you to supply all of that yourself.
 
-**The software starts, then exits.**
-The compose route skips the template's `preInstall`/`postInstall` scripts,
-because there is no repo checkout to run them from. `--dry-run` lists the
-lifecycle hooks a template declares. The git route runs them, but is currently
-unavailable (see CI/CD above).
+**The software starts, then exits, or the build fails.**
+Check the build log: `elestio cicd pipeline-history <vmID> <pipelineID>`, then
+`elestio cicd pipeline-log <vmID> --pipeline <id> --file <log>`. On the compose
+route the usual causes are a repo file the compose mounts (the CLI refuses
+these upfront unless you passed `--force`) or a template that genuinely needs
+its lifecycle scripts. Both are solved by the git route.
 
 **`variables.trim is not a function` (500 Pipeline.CreateFailed).**
 The `variables` field must be a newline-separated string, never an array. The

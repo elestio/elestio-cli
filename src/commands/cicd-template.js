@@ -2,7 +2,7 @@ import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { log, colors, outputJson, formatTable } from '../utils.js';
 import { getTemplates } from './templates.js';
-import { createSubstitutions, normalizeElestioConfig } from '../templates/elestio-config.js';
+import { createSubstitutions, normalizeElestioConfig, repoFileMounts } from '../templates/elestio-config.js';
 import { buildGitPipelinePayload, buildComposePipelinePayload } from '../payloads/pipeline.js';
 import { TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
 
@@ -212,7 +212,7 @@ export async function deployTemplate(nameOrId, options = {}) {
 
   const payload = useGit
     ? await buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig })
-    : await buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig });
+    : await buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force: options.force });
 
   if (options.dryRun) {
     if (options.json) { outputJson({ dryRun: true, route: useGit ? 'git' : 'compose', payload }); return payload; }
@@ -281,13 +281,25 @@ async function buildGitRoute({ options, projectId, target, template, repoName, p
   });
 }
 
-async function buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig }) {
+async function buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force }) {
   log('info', `Fetching docker-compose from ${TEMPLATE_REPO_OWNER}/${repoName}...`);
   const compose = await fetchCompose(sourceRepoUrl, branch, projectId);
   log('success', 'Compose file loaded');
 
+  // Checked before anything is created: without these files the containers
+  // fail ~40s into the build with an opaque "not a directory" from runc.
+  const fileMounts = repoFileMounts(compose);
+  if (fileMounts.length > 0 && !force) {
+    throw new Error(
+      `"${repoName}" bind-mounts ${fileMounts.length} file(s) that live in the template repo ` +
+      `(${fileMounts.join(', ')}). The compose route has no checkout, so Docker creates each one as an ` +
+      'empty directory and the container fails to start. Use the Git route (--owner <git-user>) for this ' +
+      'software, or --force to deploy anyway.'
+    );
+  }
+
   if (hasLifecycleHooks(elestioConfig)) {
-    log('warn', `"${repoName}" defines lifecycle scripts that need a repo checkout. They are skipped in --no-git mode; use the Git route if the software fails to start.`);
+    log('warn', `"${repoName}" defines lifecycle scripts that need a repo checkout; they are skipped on the compose route.`);
   }
 
   return buildComposePipelinePayload({

@@ -347,6 +347,44 @@ export const registry = {
         summary: 'Re-sync replicas from the primary, erasing replica data (--force)', usage: 'resync <clusterID> --force',
         async run({ args }) { await (await load.clusters()).resyncCluster(requireArg(args._[2], 'clusters resync <clusterID> --force'), args.project, !!args.force); }
       },
+      'add-node': {
+        summary: 'Add a node, copying the primary (--size/--region to change; --dry-run)', usage: 'add-node <clusterID>',
+        async run({ args, json }) {
+          await (await load.clusters()).addClusterNode(requireArg(args._[2], 'clusters add-node <clusterID>'), {
+            project: args.project, size: args.size, region: args.region, provider: args.provider,
+            version: args.version, email: args.email, dryRun: !!args['dry-run'], json
+          });
+        }
+      },
+      'remove-node': {
+        summary: 'Remove a replica node and its VM (--force)', usage: 'remove-node <clusterID> <vmID> --force',
+        async run({ args }) {
+          await (await load.clusters()).removeClusterNode(
+            requireArg(args._[2], 'clusters remove-node <clusterID> <vmID> --force'),
+            requireArg(args._[3], 'clusters remove-node <clusterID> <vmID> --force'),
+            args.project, !!args.force
+          );
+        }
+      },
+      firewall: {
+        summary: 'Show which IPs each port of a cluster accepts', usage: 'firewall <clusterID>',
+        async run({ args, json }) { await (await load.clusters()).showClusterFirewall(requireArg(args._[2], 'clusters firewall <clusterID>'), args.project, json); }
+      },
+      'firewall-restrict': {
+        summary: 'Only accept a port from given IPs, on every node', usage: 'firewall-restrict <clusterID> --port P --ips ip1,ip2',
+        async run({ args }) {
+          const { setClusterPortAccess, parseIpList } = await load.clusters();
+          const ips = parseIpList(args.ips);
+          if (ips.length === 0) throw new Error('--ips is required (comma-separated IPs or CIDR ranges). To reopen a port use firewall-open.');
+          await setClusterPortAccess(requireArg(args._[2], 'clusters firewall-restrict <clusterID> --port P --ips ...'), requireArg(args.port, '--port <port>'), ips, args.project);
+        }
+      },
+      'firewall-open': {
+        summary: 'Open a port of a cluster to everyone again', usage: 'firewall-open <clusterID> --port P',
+        async run({ args }) {
+          await (await load.clusters()).setClusterPortAccess(requireArg(args._[2], 'clusters firewall-open <clusterID> --port P'), requireArg(args.port, '--port <port>'), [], args.project);
+        }
+      },
       delete: {
         summary: 'Delete a cluster and all its nodes (--force)', usage: 'delete <clusterID> --force',
         async run({ args }) { await (await load.clusters()).deleteCluster(requireArg(args._[2], 'clusters delete <clusterID> --force'), args.project, !!args.force); }
@@ -506,6 +544,20 @@ export const registry = {
   },
 
   // ── Access ──
+
+  logs: {
+    group: 'Access',
+    summary: 'Open a live log view of a service (--mode install for the install log)',
+    usage: 'logs <vmID> [--mode app|install]',
+    async run({ args, json }) { await (await load.access()).getLogsView(requireArg(args._[1], 'logs <vmID>'), args.project, args.mode || 'app', json); }
+  },
+
+  audits: {
+    group: 'Access',
+    summary: 'Show the audit trail of a service (--days, default 30)',
+    usage: 'audits <vmID> [--days N]',
+    async run({ args, json }) { await (await load.access()).getAudits(requireArg(args._[1], 'audits <vmID>'), args.project, args.days ? Number(args.days) : 30, json); }
+  },
 
   credentials: {
     group: 'Access',

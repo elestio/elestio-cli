@@ -141,14 +141,22 @@ already started billing its VMs.
 | `elestio clusters nodes <clusterID>` | List the active nodes |
 | `elestio clusters templates` | Software that supports clustering |
 | `elestio clusters promote <clusterID> <vmID> --force` | Promote a replica to primary |
-| `elestio clusters failover <clusterID> --force` | Trigger a failover |
+| `elestio clusters failover <clusterID> on\|off` | Turn automatic failover on or off |
 | `elestio clusters resync <clusterID> --force` | Re-sync replicas from the primary |
 | `elestio clusters lock <clusterID>` | Enable termination protection |
 | `elestio clusters unlock <clusterID>` | Disable termination protection |
 
-`promote`, `failover` and `resync` all require `--force`: promotion demotes the
-current primary, and re-sync **erases all data on the replicas** and replaces
-it with a copy of the primary.
+`promote` and `resync` require `--force`: promotion demotes the current
+primary, and re-sync **erases all data on the replicas** and replaces it with a
+copy of the primary.
+
+`failover` does not switch the primary itself. It turns on or off the automatic
+failover that promotes a replica when the primary goes down; use `promote` to
+switch by hand. Its state shows in `clusters info`.
+
+Replicas are read-only and, unlike the primary, do not accept SSL connections:
+a client with `sslmode=require` can write to the primary but cannot read from a
+replica.
 
 ### Server Actions
 

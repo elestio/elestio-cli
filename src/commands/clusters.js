@@ -98,6 +98,7 @@ export async function showCluster(clusterId, projectId = null, json = false) {
   console.log(`  Provider:    ${info.provider || 'N/A'} / ${info.datacenter || 'N/A'}`);
   console.log(`  Firewall:    ${info.isFirewallActivated ? 'enabled' : 'disabled'}`);
   console.log(`  Protected:   ${info.isProtected ? 'yes' : 'no'}`);
+  console.log(`  Failover:    ${info.isFailoverEnabled ? 'automatic' : 'manual only'}`);
   if (info.totalCost) console.log(`  Cost:        ${formatPrice(info.totalCost)}`);
 
   if (nodes.length > 0) {
@@ -188,13 +189,30 @@ export async function unlockCluster(clusterId) {
   return result;
 }
 
-export async function failoverCluster(clusterId, force) {
-  if (!force) {
-    throw new Error('Failover promotes a replica and demotes the current primary. Re-run with --force.');
-  }
-  const result = await doActionOnCluster(clusterId, 'handleFailover');
-  log('success', `Failover initiated on cluster ${clusterId}`);
-  return result;
+const TOGGLES = { on: true, enable: true, true: true, off: false, disable: false, false: false };
+
+export function parseToggle(value) {
+  const key = String(value ?? '').toLowerCase();
+  if (!(key in TOGGLES)) throw new Error('Expected on|off');
+  return TOGGLES[key];
+}
+
+/**
+ * handleFailover does not fail over: it is the dashboard's automatic-failover
+ * switch, and it sets isFailoverEnabled to !currentStatus. The wanted state is
+ * therefore sent as its opposite.
+ */
+export function buildFailoverPayload(clusterId, enabled) {
+  return { clusterID: String(clusterId), action: 'handleFailover', currentStatus: enabled ? 0 : 1 };
+}
+
+export async function setAutoFailover(clusterId, state) {
+  const enabled = parseToggle(state);
+  const response = await apiRequest('/api/clusters/DoActionOnCluster', 'POST', buildFailoverPayload(clusterId, enabled));
+
+  if (response.status === 'KO') throw new Error(response.message || 'Failed to update automatic failover');
+  log('success', `Automatic failover ${enabled ? 'enabled' : 'disabled'} on cluster ${clusterId}`);
+  return response;
 }
 
 export async function resyncCluster(clusterId, projectId, force) {

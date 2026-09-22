@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectClusterNodes } from '../src/commands/clusters.js';
+import { selectClusterNodes, buildFailoverPayload, parseToggle } from '../src/commands/clusters.js';
 
 // Shapes taken from a live 2-node PostgreSQL cluster (cluster 65819)
 const cluster = { id: 65819, primaryServerID: '548816', primaryProviderServerID: '947349' };
@@ -27,5 +27,25 @@ describe('selectClusterNodes', () => {
 
   it('returns nothing when the primary is not in the project', () => {
     expect(selectClusterNodes([other], cluster)).toEqual([]);
+  });
+});
+
+describe('buildFailoverPayload', () => {
+  // The API flips isFailoverEnabled to !currentStatus, so the desired state is
+  // expressed by sending its opposite. Omitting currentStatus always enabled it.
+  it('sends the current state as the opposite of the one wanted', () => {
+    expect(buildFailoverPayload(65819, true)).toEqual({ clusterID: '65819', action: 'handleFailover', currentStatus: 0 });
+    expect(buildFailoverPayload(65819, false)).toEqual({ clusterID: '65819', action: 'handleFailover', currentStatus: 1 });
+  });
+});
+
+describe('parseToggle', () => {
+  it.each([['on', true], ['enable', true], ['true', true], ['off', false], ['disable', false], ['false', false]])(
+    '%s -> %s', (input, expected) => expect(parseToggle(input)).toBe(expected)
+  );
+
+  it('rejects anything else', () => {
+    expect(() => parseToggle(undefined)).toThrow(/on\|off/);
+    expect(() => parseToggle('--force')).toThrow(/on\|off/);
   });
 });

@@ -335,8 +335,13 @@ export const registry = {
         }
       },
       failover: {
-        summary: 'Trigger a failover (--force)', usage: 'failover <clusterID> --force',
-        async run({ args }) { await (await load.clusters()).failoverCluster(requireArg(args._[2], 'clusters failover <clusterID> --force'), !!args.force); }
+        summary: 'Turn automatic failover on or off', usage: 'failover <clusterID> on|off',
+        async run({ args }) {
+          await (await load.clusters()).setAutoFailover(
+            requireArg(args._[2], 'clusters failover <clusterID> on|off'),
+            requireArg(args._[3], 'clusters failover <clusterID> on|off')
+          );
+        }
       },
       resync: {
         summary: 'Re-sync replicas from the primary, erasing replica data (--force)', usage: 'resync <clusterID> --force',

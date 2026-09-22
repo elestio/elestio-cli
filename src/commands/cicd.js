@@ -475,9 +475,14 @@ export async function getDockerRegistries(projectId = null, json = false) {
   const pid = projectId || config.defaultProject;
 
   const response = await apiRequest('/api/cicd/getDockerRegistry', 'GET', { projectID: String(pid) });
-  if (response.status !== 'OK') throw new Error(response.message || 'Failed');
+  // This endpoint answers with a bare array, not the usual {status, data}
+  // envelope -- and an empty project gets a bare []. Demanding the envelope
+  // turned "no registries" into an error.
+  if (!Array.isArray(response) && response.status === 'KO') {
+    throw new Error(response.message || 'Failed to list Docker registries');
+  }
 
-  const registries = response.data?.registries || [];
+  const registries = Array.isArray(response) ? response : (response.data?.registries || []);
   if (json) { outputJson(registries); return registries; }
   if (registries.length === 0) { log('info', 'No Docker registries'); return []; }
 

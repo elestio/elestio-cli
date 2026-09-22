@@ -110,17 +110,36 @@ async function findGitAuth(gitType, projectId) {
 /**
  * Generates the template repo into the user's Git account.
  * GitHub uses the template-generate API; GitLab imports the repo by URL.
+ *
+ * NOTE: /api/cicd/createRepoByTemplate currently returns 404 in production -
+ * the controller exists in the backend but is not registered in apiconfig.json,
+ * which is the route whitelist. Until that is fixed the Git route cannot work,
+ * so --no-git is the default and this path reports the gap precisely rather
+ * than surfacing a bare 404.
  */
 async function generateRepoFromTemplate({ gitType, authID, owner, repoName, templateName, isPrivate, isNonOrg }) {
-  const response = await apiRequest('/api/cicd/createRepoByTemplate', 'POST', {
-    ownerName: owner,
-    repoName,
-    templateName,
-    gitType,
-    authID: String(authID),
-    isPrivate: String(!!isPrivate),
-    isNonOrg: !!isNonOrg
-  });
+  let response;
+
+  try {
+    response = await apiRequest('/api/cicd/createRepoByTemplate', 'POST', {
+      ownerName: owner,
+      repoName,
+      templateName,
+      gitType,
+      authID: String(authID),
+      isPrivate: String(!!isPrivate),
+      isNonOrg: !!isNonOrg
+    });
+  } catch (err) {
+    if (/non-JSON response \(HTTP 404\)|HTTP 404/.test(err.message)) {
+      throw new Error(
+        'The Elestio API does not currently expose /api/cicd/createRepoByTemplate (404), ' +
+        'so the Git route is unavailable. Deploy with --no-git instead; the software will run, ' +
+        'but any lifecycle scripts it declares will be skipped.'
+      );
+    }
+    throw err;
+  }
 
   if (response?.status === 'KO') {
     throw new Error(response.message || response.details?.message || `Could not create "${repoName}" in ${owner}`);
@@ -172,7 +191,9 @@ export async function deployTemplate(nameOrId, options = {}) {
   const pipelineName = options.name || repoName;
   const branch = options.branch || 'main';
   const sourceRepoUrl = templateRepoUrl(repoName);
-  const useGit = options.git !== false;
+  // Opt-in, not opt-out: the Git route depends on an endpoint the API does not
+  // currently expose (see generateRepoFromTemplate).
+  const useGit = options.git === true;
 
   log('info', `Resolving CI/CD target ${options.target}...`);
   const target = await resolveCicdTarget(options.target, projectId);

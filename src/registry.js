@@ -553,9 +553,9 @@ export const registry = {
     group: 'CI/CD',
     summary: 'Manage CI/CD targets and pipelines',
     examples: [
-      { description: 'Deploy catalog software as a pipeline (the usual case)', command: 'elestio cicd deploy-template n8n --target 848528 --owner my-github-user' },
-      { description: 'Same, without connecting a Git account', command: 'elestio cicd deploy-template n8n --target 848528 --no-git' },
-      { description: 'See what it would create first', command: 'elestio cicd deploy-template n8n --target 848528 --no-git --dry-run' },
+      { description: 'Deploy catalog software as a pipeline (the usual case)', command: 'elestio cicd deploy-template n8n --target 848528' },
+      { description: 'See what it would create first', command: 'elestio cicd deploy-template n8n --target 848528 --dry-run' },
+      { description: 'Git route: generates the repo in your account, keeps lifecycle scripts', command: 'elestio cicd deploy-template n8n --target 848528 --owner my-github-user' },
       { description: 'Pipeline from your own repo', command: 'elestio cicd create --auto --target 848528 --name my-app --repo acme/my-app' }
     ],
     actions: {
@@ -568,7 +568,7 @@ export const registry = {
             target: args.target, project: args.project, name: args.name,
             owner: args.owner, branch: args.branch, repoName: args['repo-name'],
             gitType: args['git-type'], authId: args['auth-id'],
-            git: args['no-git'] ? false : args.git !== 'false',
+            git: !args['no-git'] && (args.git === true || args.git === 'true' || !!args.owner),
             private: !!args.private, nonOrg: !!args['non-org'],
             buildCmd: args['build-cmd'], runCmd: args['run-cmd'],
             installCmd: args['install-cmd'], buildDir: args['build-dir'],

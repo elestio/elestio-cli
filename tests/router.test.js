@@ -154,3 +154,21 @@ describe('flag mapping for deploy', () => {
     expect(args['no-git']).toBe(true);
   });
 });
+
+describe('deploy-template route selection', () => {
+  // The Git route needs /api/cicd/createRepoByTemplate, which the API returns
+  // 404 for today, so it is opt-in via --owner rather than the default.
+  const route = (args) => !args['no-git'] && (args.git === true || args.git === 'true' || !!args.owner);
+
+  it('defaults to the compose route', () => {
+    expect(route(parseArgs(['cicd', 'deploy-template', 'n8n', '--target', '1']))).toBe(false);
+  });
+
+  it('takes the git route when an owner is given', () => {
+    expect(route(parseArgs(['cicd', 'deploy-template', 'n8n', '--target', '1', '--owner', 'acme']))).toBe(true);
+  });
+
+  it('lets --no-git win over --owner', () => {
+    expect(route(parseArgs(['cicd', 'deploy-template', 'n8n', '--owner', 'acme', '--no-git']))).toBe(false);
+  });
+});

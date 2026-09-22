@@ -291,10 +291,10 @@ elestio deploy CI-CD-Target --name my-target
 elestio cicd templates n8n
 
 # 3. See exactly what will be created, without creating it
-elestio cicd deploy-template n8n --target <vmID> --no-git --dry-run
+elestio cicd deploy-template n8n --target <vmID> --dry-run
 
 # 4. Deploy
-elestio cicd deploy-template n8n --target <vmID> --owner my-github-user
+elestio cicd deploy-template n8n --target <vmID>
 ```
 
 Every catalog entry has a companion repo at
@@ -316,15 +316,21 @@ domain.
 
 **Two routes:**
 
-| | `--owner <git-user>` (default) | `--no-git` |
+| | compose (default) | git (`--owner <git-user>`) |
 |---|---|---|
-| What it does | Generates the template repo into your Git account, then builds from it | Inlines the template's `docker-compose.yml` |
-| Needs a Git account | Yes, connected in the dashboard | No |
-| Lifecycle scripts | Run | **Skipped** |
-| Good for | Software with `preInstall`/`postInstall` hooks; when you want to edit the code | Quick deployments, automation, agents |
+| What it does | Inlines the template's `docker-compose.yml` | Generates the template repo into your Git account, then builds from it |
+| Needs a Git account | No | Yes, connected in the dashboard |
+| Lifecycle scripts | **Skipped** | Run |
+| Good for | Most deployments, automation, agents | Software with `preInstall`/`postInstall` hooks; when you want to edit the code |
 
-The CLI warns you when you use `--no-git` on a template that declares lifecycle
-scripts, because that software will probably fail to start.
+The CLI warns you when the compose route is used on a template that declares
+lifecycle scripts, because that software may fail to start.
+
+> **The git route is currently unavailable.** It needs
+> `POST /api/cicd/createRepoByTemplate`, which the Elestio API returns 404 for:
+> the controller exists in the backend but is not registered in its route
+> whitelist. The CLI reports this explicitly instead of surfacing a bare 404.
+> Until it is fixed, use the compose route.
 
 | Command | Description |
 |---------|-------------|
@@ -350,8 +356,8 @@ scripts, because that software will probably fail to start.
 | Option | Description |
 |--------|-------------|
 | `--target <vmID>` | **Required.** CI/CD target to deploy onto (`elestio cicd targets`) |
-| `--owner <user-or-org>` | Git account or org to create the repo in. Required unless `--no-git` |
-| `--no-git` | Skip repo creation, inline the compose file instead |
+| `--owner <user-or-org>` | Switches to the git route and names the account to create the repo in |
+| `--no-git` | Force the compose route even when `--owner` is given |
 | `--name <name>` | Pipeline name (defaults to the software name) |
 | `--branch <branch>` | Template branch (default `main`) |
 | `--private` | Create the generated repo as private |
@@ -438,10 +444,10 @@ variables and lifecycle hooks. `cicd create` builds a bare pipeline and expects
 you to supply all of that yourself.
 
 **The software starts, then exits.**
-If you deployed with `--no-git`, the template's `preInstall`/`postInstall`
-scripts were skipped because there is no repo checkout. Re-deploy with the Git
-route (`--owner <your-git-user>`). `--dry-run` lists the lifecycle hooks a
-template declares.
+The compose route skips the template's `preInstall`/`postInstall` scripts,
+because there is no repo checkout to run them from. `--dry-run` lists the
+lifecycle hooks a template declares. The git route runs them, but is currently
+unavailable (see CI/CD above).
 
 **`variables.trim is not a function` (500 Pipeline.CreateFailed).**
 The `variables` field must be a newline-separated string, never an array. The

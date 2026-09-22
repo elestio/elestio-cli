@@ -1,6 +1,6 @@
 {
   "name": "elestio",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Elestio CLI - Deploy and manage services on the Elestio DevOps platform",
   "type": "module",
   "main": "src/cli.js",
@@ -8,7 +8,10 @@
     "elestio": "./bin/elestio.js"
   },
   "scripts": {
-    "start": "node bin/elestio.js"
+    "start": "node bin/elestio.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "elestio",
@@ -38,5 +41,9 @@
   "homepage": "https://elest.io",
   "bugs": {
     "url": "https://github.com/elestio/elestio-cli/issues"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "vitest": "^2.1.8"
   }
 }

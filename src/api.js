@@ -1,7 +1,9 @@
-import { loadConfig, saveConfig, getCredentials } from './config.js';
-import { log } from './utils.js';
+import { loadConfig, saveConfig } from './config.js';
 
 const BASE_URL = 'https://api.elest.io';
+
+// Requests that exceed this are aborted rather than hanging the CLI forever.
+const REQUEST_TIMEOUT_MS = 60000;
 
 // ── JWT management ──
 
@@ -10,14 +12,52 @@ function isJwtExpired(config) {
   return Date.now() > (config.jwtExpiry - 300000); // 5 min buffer
 }
 
+/**
+ * Wraps fetch with a timeout and turns transport failures into readable errors.
+ */
+async function httpRequest(url, options) {
+  let response;
+
+  try {
+    response = await fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      throw new Error(`Request to ${BASE_URL} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw new Error(`Cannot reach ${BASE_URL}: ${err.message}`);
+  }
+
+  return response;
+}
+
+/**
+ * The API returns HTML on gateway errors, so response.json() alone would surface
+ * "Unexpected token <" instead of the real problem.
+ */
+async function parseJson(response, endpoint) {
+  const text = await response.text();
+
+  if (text === '') {
+    if (response.ok) return {};
+    throw new Error(`${endpoint} failed: HTTP ${response.status} ${response.statusText} (empty response)`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+    throw new Error(`${endpoint} returned a non-JSON response (HTTP ${response.status}): ${snippet}`);
+  }
+}
+
 async function authenticate(email, token) {
-  const response = await fetch(`${BASE_URL}/api/auth/checkAPIToken`, {
+  const response = await httpRequest(`${BASE_URL}/api/auth/checkAPIToken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, token })
   });
 
-  const data = await response.json();
+  const data = await parseJson(response, '/api/auth/checkAPIToken');
 
   if (data.status !== 'OK' || !data.jwt) {
     throw new Error(data.message || 'Authentication failed');
@@ -38,15 +78,19 @@ export async function getJwt() {
 
   if (isJwtExpired(config)) {
     const auth = await authenticate(config.email, config.apiToken);
-    config.jwt = auth.jwt;
-    config.jwtExpiry = auth.jwtExpiry;
-    saveConfig(config);
+    saveConfig({ ...config, jwt: auth.jwt, jwtExpiry: auth.jwtExpiry });
+    return auth.jwt;
   }
 
   return config.jwt;
 }
 
 // ── API requests ──
+
+function clearJwt() {
+  const config = loadConfig();
+  saveConfig({ ...config, jwt: null, jwtExpiry: null });
+}
 
 export async function apiRequest(endpoint, method = 'POST', body = {}, retried = false) {
   const jwt = await getJwt();
@@ -60,21 +104,19 @@ export async function apiRequest(endpoint, method = 'POST', body = {}, retried =
     options.body = JSON.stringify({ jwt, ...body });
   }
 
-  const url = method === 'GET' && Object.keys(body).length > 0
+  // GET routes read parameters from the query string only (backend requirement).
+  const url = method === 'GET'
     ? `${BASE_URL}${endpoint}?${new URLSearchParams({ jwt, ...body })}`
     : `${BASE_URL}${endpoint}`;
 
-  const response = await fetch(url, options);
+  const response = await httpRequest(url, options);
 
   if (response.status === 401 && !retried) {
-    const config = loadConfig();
-    config.jwt = null;
-    config.jwtExpiry = null;
-    saveConfig(config);
+    clearJwt();
     return apiRequest(endpoint, method, body, true);
   }
 
-  const data = await response.json();
+  const data = await parseJson(response, endpoint);
 
   const isAuthError = !retried && (
     (data.status === 'error' && data.message?.toLowerCase().includes('auth')) ||
@@ -83,10 +125,7 @@ export async function apiRequest(endpoint, method = 'POST', body = {}, retried =
   );
 
   if (isAuthError) {
-    const config = loadConfig();
-    config.jwt = null;
-    config.jwtExpiry = null;
-    saveConfig(config);
+    clearJwt();
     return apiRequest(endpoint, method, body, true);
   }
 
@@ -94,12 +133,11 @@ export async function apiRequest(endpoint, method = 'POST', body = {}, retried =
 }
 
 export async function apiRequestNoAuth(endpoint, method = 'GET') {
-  const url = `${BASE_URL}${endpoint}`;
-  const response = await fetch(url, {
+  const response = await httpRequest(`${BASE_URL}${endpoint}`, {
     method,
     headers: { 'Content-Type': 'application/json' }
   });
-  return response.json();
+  return parseJson(response, endpoint);
 }
 
 export { BASE_URL, authenticate };

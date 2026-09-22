@@ -1,7 +1,7 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { findTemplate } from './templates.js';
-import { formatTable, formatService, formatPrice, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
+import { formatTable, formatService, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
 
 async function listProjectsRaw() {
   const response = await apiRequest('/api/projects/getList');

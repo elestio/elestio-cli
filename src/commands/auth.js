@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig, saveCredentials, getCredentials, CREDENTIALS_PATH } from '../config.js';
+import { loadConfig, saveConfig, saveCredentials, getCredentials } from '../config.js';
 import { authenticate } from '../api.js';
 import { log, colors, outputJson } from '../utils.js';
 

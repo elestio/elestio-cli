@@ -263,12 +263,26 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | `--version`, `-v` | Show version |
 | `--debug` | Show full error stack traces |
 
+### Passing values that start with `-`
+
+`--flag value` treats a value like `-p` or `--port` as the next flag. For any
+value that begins with a dash - passwords, negative numbers - use the
+`--flag=value` form instead:
+
+```bash
+elestio cicd registry-add --name ghcr --username me --password='-Xk9secret'
+```
+
+Everything after a bare `--` is treated as a positional argument.
+
 ## Configuration
 
-Credentials and config are stored in `~/.elestio/`:
+Credentials and config are stored in `~/.elestio/` (directory mode 0700):
 
 - `~/.elestio/credentials` - Email and API token (mode 0600)
-- `~/.elestio/config.json` - JWT cache, default project, provider defaults
+- `~/.elestio/config.json` - JWT cache, default project, provider defaults (mode 0600; the cached JWT is a bearer credential)
+
+Requests to the API time out after 60s rather than hanging.
 
 Get your API token from [Elestio Dashboard > Security](https://dash.elest.io/account/security).
 

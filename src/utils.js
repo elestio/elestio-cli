@@ -36,22 +36,26 @@ export function parseArgs(argv) {
   while (i < argv.length) {
     const arg = argv[i];
 
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2);
+    // Everything after `--` is positional, never parsed as a flag.
+    if (arg === '--') {
+      args._.push(...argv.slice(i + 1));
+      break;
+    }
+
+    // `--key=value` is the unambiguous form: it is the only way to pass a value
+    // that itself starts with a dash (passwords, negative numbers).
+    if (arg.startsWith('--') && arg.includes('=')) {
+      const eq = arg.indexOf('=');
+      args[arg.slice(2, eq)] = arg.slice(eq + 1);
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith('--') || (arg.startsWith('-') && arg.length === 2)) {
+      const key = arg.startsWith('--') ? arg.slice(2) : arg.slice(1);
       const next = argv[i + 1];
 
-      if (next && !next.startsWith('-')) {
-        args[key] = next;
-        i += 2;
-      } else {
-        args[key] = true;
-        i++;
-      }
-    } else if (arg.startsWith('-') && arg.length === 2) {
-      const key = arg.slice(1);
-      const next = argv[i + 1];
-
-      if (next && !next.startsWith('-')) {
+      if (next !== undefined && !looksLikeFlag(next)) {
         args[key] = next;
         i += 2;
       } else {
@@ -65,6 +69,14 @@ export function parseArgs(argv) {
   }
 
   return args;
+}
+
+/**
+ * `-p` and `--port` are flags; `-5`, `-p@ssw0rd` and `-` are values.
+ * Values that are genuinely ambiguous must use the `--key=value` form.
+ */
+function looksLikeFlag(token) {
+  return /^--[a-zA-Z]/.test(token) || /^-[a-zA-Z]$/.test(token);
 }
 
 // ── Table formatting ──

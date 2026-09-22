@@ -21,6 +21,15 @@ const DEFAULT_CONFIG = {
 function ensureDir() {
   if (!fs.existsSync(ELESTIO_DIR)) {
     fs.mkdirSync(ELESTIO_DIR, { mode: 0o700, recursive: true });
+    return;
+  }
+
+  // A directory created by an older version (or restored from a backup) may be
+  // group/world readable; both files below hold credentials.
+  try {
+    fs.chmodSync(ELESTIO_DIR, 0o700);
+  } catch {
+    // ignore
   }
 }
 
@@ -48,6 +57,11 @@ export function saveCredentials(email, apiToken) {
     JSON.stringify({ email, apiToken }, null, 2),
     { mode: 0o600 }
   );
+  try {
+    fs.chmodSync(CREDENTIALS_PATH, 0o600);
+  } catch {
+    // ignore
+  }
 }
 
 // ── Config (jwt, defaults, defaultProject) ──
@@ -74,9 +88,15 @@ export function loadConfig() {
 
 export function saveConfig(config) {
   ensureDir();
-  // Never persist credentials in config.json
+  // Never persist the API token in config.json -- but the JWT it does hold is a
+  // bearer credential, so the file is owner-only like the credentials file.
   const { email, apiToken, ...safeConfig } = config;
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(safeConfig, null, 2));
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(safeConfig, null, 2), { mode: 0o600 });
+  try {
+    fs.chmodSync(CONFIG_PATH, 0o600);
+  } catch {
+    // ignore
+  }
 }
 
 // ── Exports ──

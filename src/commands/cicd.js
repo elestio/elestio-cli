@@ -1,11 +1,7 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
-import { log, colors, formatTable, sleep, outputJson } from '../utils.js';
-import { getServiceDetails } from './services.js';
+import { log, colors, formatTable, outputJson } from '../utils.js';
 import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { execSync } from 'child_process';
 
 // ── List / Details ──
 
@@ -203,9 +199,13 @@ export async function removePipelineDomain(vmID, pipelineID, domain, projectId) 
 export async function createPipeline(configFile) {
   if (!configFile || !fs.existsSync(configFile)) throw new Error(`Config file not found: ${configFile}`);
 
-  const pipelineConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
-  // Backend runs variables.trim(); it must be a string.
-  if (typeof pipelineConfig.variables !== 'string') pipelineConfig.variables = '';
+  const fileConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  // The backend runs variables.trim(), so it must be a string, never an array.
+  const pipelineConfig = {
+    ...fileConfig,
+    variables: typeof fileConfig.variables === 'string' ? fileConfig.variables : ''
+  };
+
   log('info', 'Creating pipeline...');
   const response = await apiRequest('/api/cicd/createCiCdExistServer', 'POST', pipelineConfig);
 

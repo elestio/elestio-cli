@@ -1,6 +1,6 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
-import { log, colors, outputJson } from '../utils.js';
+import { colors, outputJson } from '../utils.js';
 import { getServiceDetails } from './services.js';
 
 export async function getCredentials(vmID, projectId = null, json = false) {

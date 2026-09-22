@@ -3,6 +3,7 @@ import { loadConfig } from '../config.js';
 import { findTemplate } from './templates.js';
 import { formatTable, formatService, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
 import { buildCreateServerPayload, validateClusterOptions, describeCluster } from '../payloads/server.js';
+import { parseVmIDs, deploymentProgress } from '../deployment.js';
 
 async function listProjectsRaw() {
   const response = await apiRequest('/api/projects/getList');
@@ -195,26 +196,27 @@ export async function deployService(templateNameOrId, options = {}) {
 }
 
 export async function waitForDeployment(vmID, projectId, timeoutMs = 600000) {
+  const ids = parseVmIDs(vmID);
+  if (ids.length === 0) throw new Error('No vmID to wait for');
+
   const start = Date.now();
-  let lastStatus = '';
+  let lastSummary = '';
 
   while (Date.now() - start < timeoutMs) {
-    const services = await listServicesRaw(projectId);
-    const svc = services.find(s =>
-      String(s.vmID) === String(vmID) || String(s.providerServerID) === String(vmID)
-    );
+    const progress = deploymentProgress(await listServicesRaw(projectId), ids);
 
-    if (!svc) { await sleep(10000); continue; }
+    if (progress.services.length === 0) { await sleep(10000); continue; }
 
-    if (svc.deploymentStatus !== lastStatus) {
-      lastStatus = svc.deploymentStatus;
-      log('info', `Status: ${svc.deploymentStatus}`);
+    if (progress.summary !== lastSummary) {
+      lastSummary = progress.summary;
+      log('info', `Status: ${progress.summary}`);
     }
 
-    if (svc.deploymentStatus === 'Deployed' && svc.status === 'running') {
+    if (progress.done) {
       log('success', 'Deployment complete!');
-      console.log('\n' + formatService(svc) + '\n');
-      return svc;
+      for (const svc of progress.services) console.log('\n' + formatService(svc));
+      console.log('');
+      return ids.length === 1 ? progress.services[0] : progress.services;
     }
 
     await sleep(15000);

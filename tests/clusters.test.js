@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { selectClusterNodes, buildFailoverPayload, parseToggle, clusterDeletionTarget } from '../src/commands/clusters.js';
+import {
+  selectClusterNodes, buildFailoverPayload, parseToggle, clusterDeletionTarget,
+  resyncCluster, promoteNode, deleteCluster
+} from '../src/commands/clusters.js';
+import { deleteService } from '../src/commands/services.js';
 
 // Shapes taken from a live 2-node PostgreSQL cluster (cluster 65819)
 const cluster = { id: 65819, primaryServerID: '548816', primaryProviderServerID: '947349' };
@@ -63,5 +67,17 @@ describe('clusterDeletionTarget', () => {
   it('refuses when the primary is unknown', () => {
     expect(() => clusterDeletionTarget({ id: 65819, primaryProviderServerID: null, isProtected: 0 }))
       .toThrow(/primary/);
+  });
+});
+
+// The guards run before any request, so these never reach the network.
+describe('destructive commands require --force', () => {
+  it.each([
+    ['clusters resync', () => resyncCluster(65819, '79753', false), /erases all data/],
+    ['clusters promote', () => promoteNode(65819, 947350, '79753', false), /--force/],
+    ['clusters delete', () => deleteCluster(65819, '79753', false), /every node/],
+    ['delete-service', () => deleteService(947350, { project: '79753' }), /--force/]
+  ])('%s refuses without --force', async (_, run, message) => {
+    await expect(run()).rejects.toThrow(message);
   });
 });

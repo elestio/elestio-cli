@@ -382,6 +382,10 @@ Metabase deploy cleanly on the compose route.
 | `--non-org` | The owner is a personal account, not an organisation |
 | `--auth-id <id>` | Git auth ID, when you have more than one account connected |
 | `--git-type <type>` | `GITHUB` (default) or `GITLAB` |
+| `--repo-name <name>` | Template repo to use, when it differs from the software name |
+| `--build-cmd`, `--run-cmd`, `--install-cmd`, `--build-dir` | Override the values from `elestio.yml` (git route only) |
+| `--variables <KEY=VALUE...>` | Override the environment variables, newline-separated (git route only) |
+| `--force` | Deploy on the compose route even when the compose mounts a repo file |
 | `--dry-run` | Print the plan, create nothing |
 
 #### Pipelines from your own repository
@@ -466,11 +470,13 @@ Check the build log: `elestio cicd pipeline-history <vmID> <pipelineID>`, then
 `elestio cicd pipeline-log <vmID> --pipeline <id> --file <log>`. On the compose
 route the usual causes are a repo file the compose mounts (the CLI refuses
 these upfront unless you passed `--force`) or a template that genuinely needs
-its lifecycle scripts. Both are solved by the git route.
+its lifecycle scripts. Both need the git route, which is currently
+unavailable (see above), so for now there is no workaround for those
+templates.
 
 **`variables.trim is not a function` (500 Pipeline.CreateFailed).**
 The `variables` field must be a newline-separated string, never an array. The
-CLI enforces this from 1.0.4; if you are on an older version, upgrade with
+CLI enforces this from 1.1.0; if you are on an older version, upgrade with
 `npm install -g elestio@latest`.
 
 **`does not support clustering`.**

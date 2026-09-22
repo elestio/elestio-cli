@@ -6,6 +6,7 @@ import {
   minClusterNodes, supportsClustering, supportsMultiMaster
 } from '../constants.js';
 import { getTemplates } from './templates.js';
+import { listServicesRaw } from './services.js';
 
 const APPID = 'CloudVM';
 
@@ -84,7 +85,7 @@ export async function getClusterInfo(clusterId, projectId = null) {
 
 export async function showCluster(clusterId, projectId = null, json = false) {
   const info = await getClusterInfo(clusterId, projectId);
-  const nodes = await listNodesRaw(clusterId, projectId);
+  const nodes = await listNodesRaw(info, projectId);
 
   if (json) { outputJson({ ...info, nodes }); return info; }
 
@@ -107,15 +108,26 @@ export async function showCluster(clusterId, projectId = null, json = false) {
   return info;
 }
 
-export async function listNodesRaw(clusterId, projectId = null) {
-  const response = await apiRequest('/api/clusters/getActivesNodesByClusterID', 'POST', {
-    appid: APPID,
-    projectId: requireProject(projectId),
-    clusterID: String(clusterId)
-  });
+/**
+ * Replicas carry the primary's serverID in their clusterID field, not the
+ * cluster's own ID. getActivesNodesByClusterID works the same way and only
+ * returns providerServerIDs, while promote needs the full node record, so the
+ * nodes are picked out of the project's services instead.
+ */
+export function selectClusterNodes(services, cluster) {
+  const primary = services.find(s =>
+    (cluster.primaryServerID && String(s.id) === String(cluster.primaryServerID)) ||
+    String(s.vmID) === String(cluster.primaryProviderServerID)
+  );
+  if (!primary) return [];
 
-  if (response.status === 'KO') throw new Error(response.message || 'Failed to list cluster nodes');
-  return response.nodes || [];
+  const replicas = services.filter(s => s !== primary && String(s.clusterID) === String(primary.id));
+  return [primary, ...replicas];
+}
+
+export async function listNodesRaw(cluster, projectId = null) {
+  const services = await listServicesRaw(requireProject(projectId));
+  return selectClusterNodes(services, cluster);
 }
 
 const NODE_COLUMNS = [
@@ -141,7 +153,7 @@ function nodeRows(nodes, info) {
 
 export async function listNodes(clusterId, projectId = null, json = false) {
   const info = await getClusterInfo(clusterId, projectId);
-  const nodes = await listNodesRaw(clusterId, projectId);
+  const nodes = await listNodesRaw(info, projectId);
 
   if (json) { outputJson(nodes); return nodes; }
   if (nodes.length === 0) { log('info', `No active nodes on cluster ${clusterId}`); return []; }
@@ -213,7 +225,7 @@ export async function promoteNode(clusterId, vmID, projectId, force) {
 
   const pid = requireProject(projectId);
   const info = await getClusterInfo(clusterId, pid);
-  const nodes = await listNodesRaw(clusterId, pid);
+  const nodes = await listNodesRaw(info, pid);
 
   const node = nodes.find(n => String(n.vmID) === String(vmID));
   if (!node) {

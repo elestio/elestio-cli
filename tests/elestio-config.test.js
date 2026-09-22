@@ -113,6 +113,19 @@ describe('normalizeElestioConfig', () => {
     expect(normalizeElestioConfig(RYBBIT, subs).hasConfig).toBe(true);
   });
 
+  it('does not mistake the API\'s bare acknowledgement for a config', () => {
+    // A repo with no elestio.yml still answers 200 with {"status":"ok"} and
+    // nothing else. Reading that as a config is what produces a pipeline that
+    // deploys and runs nothing.
+    expect(normalizeElestioConfig({ status: 'ok' }, subs).hasConfig).toBe(false);
+    expect(normalizeElestioConfig({ status: 'KO' }, subs).hasConfig).toBe(false);
+  });
+
+  it('accepts a partial elestio.yml', () => {
+    expect(normalizeElestioConfig({ ports: [{ targetPort: 3000 }] }, subs).hasConfig).toBe(true);
+    expect(normalizeElestioConfig({ environments: [] }, subs).hasConfig).toBe(true);
+  });
+
   it('keeps [CI_CD_DOMAIN] in webUI so it resolves after deployment', () => {
     const cfg = normalizeElestioConfig(RYBBIT, subs);
     expect(cfg.webUI[0].url).toBe('https://[CI_CD_DOMAIN]');

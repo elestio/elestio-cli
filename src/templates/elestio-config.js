@@ -67,6 +67,9 @@ function substituteDeep(node, subs) {
   return substitute(node, subs);
 }
 
+/** Keys that mean the repo really does carry an elestio.yml. */
+const CONFIG_KEYS = ['config', 'environments', 'ports', 'exposedPorts', 'lifeCycleConfig', 'copyCommandConfig', 'webUI'];
+
 const EMPTY_LIFECYCLE = {
   preInstallCommand: '', postInstallCommand: '',
   preBackupCommand: '', postBackupCommand: '',
@@ -128,7 +131,11 @@ export function normalizeElestioConfig(raw, subs) {
     : [];
 
   return {
-    hasConfig: Object.keys(source).length > 0,
+    // A repo with no elestio.yml still answers 200, with {"status":"ok"} and
+    // nothing else -- so presence is decided on the config keys themselves.
+    // Treating that reply as a config is what builds a pipeline that runs
+    // nothing.
+    hasConfig: CONFIG_KEYS.some(key => source[key] !== undefined && source[key] !== null),
     config: {
       runTime: config.runTime || '',
       version: config.version === undefined || config.version === null ? '' : String(config.version),

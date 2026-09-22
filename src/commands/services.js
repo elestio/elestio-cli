@@ -1,7 +1,9 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { findTemplate } from './templates.js';
-import { formatTable, formatService, formatPrice, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
+import { formatTable, formatService, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
+import { buildCreateServerPayload, validateClusterOptions, describeCluster } from '../payloads/server.js';
+import { parseVmIDs, deploymentProgress } from '../deployment.js';
 
 async function listProjectsRaw() {
   const response = await apiRequest('/api/projects/getList');
@@ -127,14 +129,30 @@ export async function deployService(templateNameOrId, options = {}) {
   const isCicd = template.title?.toLowerCase().includes('ci-cd') || templateNameOrId?.toLowerCase() === 'cicd';
   const serviceType = isCicd ? 'CICD' : 'Service';
 
+  // Validated before anything is created: a rejected cluster still bills the
+  // VMs the provider has already started.
+  const cluster = options.cluster
+    ? validateClusterOptions({ mode: options.clusterMode, nodes: options.nodes }, template)
+    : null;
+
+  if (cluster && isCicd) throw new Error('A CI/CD target cannot be deployed as a cluster');
+
+  const payload = buildCreateServerPayload({
+    template, projectId, serverName, serverType, datacenter, provider,
+    support, adminEmail, version, serviceType, cluster,
+    pipelineName: options.pipelineName, cicdMode: options.cicdMode
+  });
+
   if (options.dryRun) {
     const preview = {
       template: template.title, templateId: template.id, version,
-      projectId, serverName, provider, datacenter, serverType, support, adminEmail, serviceType
+      projectId, serverName, provider, datacenter, serverType, support, adminEmail, serviceType,
+      cluster: cluster ? { mode: cluster.mode, nodes: cluster.nodes, isReplica: cluster.isReplica } : null,
+      topology: describeCluster(cluster)
     };
 
     if (options.json) {
-      outputJson({ dryRun: true, ...preview });
+      outputJson({ dryRun: true, ...preview, payload });
       return preview;
     }
 
@@ -148,6 +166,8 @@ export async function deployService(templateNameOrId, options = {}) {
     console.log(`  Size:       ${serverType}`);
     console.log(`  Support:    ${support}`);
     console.log(`  Admin:      ${adminEmail}`);
+    console.log(`  Topology:   ${describeCluster(cluster)}`);
+    if (cluster) console.log(`  ${colors.yellow}Billing is per VM: ${cluster.nodes} VMs will be created.${colors.reset}`);
     console.log('');
     log('info', 'To deploy, run the same command without --dry-run');
     return preview;
@@ -156,17 +176,7 @@ export async function deployService(templateNameOrId, options = {}) {
   log('info', `Deploying ${template.title} (ID: ${template.id})`);
   log('info', `  Project: ${projectId} | Name: ${serverName}`);
   log('info', `  Provider: ${provider} | Size: ${serverType} @ ${datacenter}`);
-
-  const payload = {
-    templateID: String(template.id), serverType, datacenter,
-    providerName: provider, serverName, appid: 'Cloudxx',
-    data: 'data', support, projectId: String(projectId),
-    version, adminEmail, deploymentServiceType: 'normal', serviceType
-  };
-
-  if (isCicd) {
-    payload.cicdPayload = { pipelineName: options.pipelineName || serverName };
-  }
+  if (cluster) log('info', `  Cluster: ${describeCluster(cluster)}`);
 
   const response = await apiRequest('/api/servers/createServer', 'POST', payload);
 
@@ -175,6 +185,7 @@ export async function deployService(templateNameOrId, options = {}) {
   }
 
   log('success', `Deployment started! Provider Server ID: ${response.providerServerID}`);
+  if (cluster) log('info', 'Replicas are configured after the primary is up; follow progress with: elestio clusters list');
 
   if (options.wait !== false) {
     log('info', 'Waiting for deployment to complete...');
@@ -185,26 +196,27 @@ export async function deployService(templateNameOrId, options = {}) {
 }
 
 export async function waitForDeployment(vmID, projectId, timeoutMs = 600000) {
+  const ids = parseVmIDs(vmID);
+  if (ids.length === 0) throw new Error('No vmID to wait for');
+
   const start = Date.now();
-  let lastStatus = '';
+  let lastSummary = '';
 
   while (Date.now() - start < timeoutMs) {
-    const services = await listServicesRaw(projectId);
-    const svc = services.find(s =>
-      String(s.vmID) === String(vmID) || String(s.providerServerID) === String(vmID)
-    );
+    const progress = deploymentProgress(await listServicesRaw(projectId), ids);
 
-    if (!svc) { await sleep(10000); continue; }
+    if (progress.services.length === 0) { await sleep(10000); continue; }
 
-    if (svc.deploymentStatus !== lastStatus) {
-      lastStatus = svc.deploymentStatus;
-      log('info', `Status: ${svc.deploymentStatus}`);
+    if (progress.summary !== lastSummary) {
+      lastSummary = progress.summary;
+      log('info', `Status: ${progress.summary}`);
     }
 
-    if (svc.deploymentStatus === 'Deployed' && svc.status === 'running') {
+    if (progress.done) {
       log('success', 'Deployment complete!');
-      console.log('\n' + formatService(svc) + '\n');
-      return svc;
+      for (const svc of progress.services) console.log('\n' + formatService(svc));
+      console.log('');
+      return ids.length === 1 ? progress.services[0] : progress.services;
     }
 
     await sleep(15000);

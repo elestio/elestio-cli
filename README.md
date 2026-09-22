@@ -29,6 +29,18 @@ elestio deploy PostgreSQL --project 12345 --name my-db
 elestio services --project 12345
 ```
 
+### Three ways to run software
+
+| | Command | You get |
+|---|---|---|
+| **Managed service** | `elestio deploy postgresql` | One VM running the software, fully managed |
+| **Cluster** | `elestio deploy postgresql --cluster --nodes 3` | Several VMs with replication |
+| **Pipeline** | `elestio cicd deploy-template n8n --target <vmID>` | Software running on a shared CI/CD target, rebuilt from a repo |
+
+Pipelines are cheaper (several pipelines share one target VM) and let you edit
+the software's compose file; managed services get backups, monitoring and
+support. See [CI/CD](#cicd) for the pipeline route.
+
 ## Commands
 
 ### Auth & Config
@@ -72,6 +84,7 @@ elestio services --project 12345
 | `elestio services` | List services in default project |
 | `elestio service <vmID>` | Show service details |
 | `elestio deploy <template>` | Deploy a new service |
+| `elestio deploy <template> --cluster` | Deploy as a cluster (see [Clusters](#clusters)) |
 | `elestio deploy <template> --dry-run` | Preview deployment |
 | `elestio delete-service <vmID> --force` | Delete a service |
 | `elestio move-service <vmID> <targetProjectId>` | Move to another project |
@@ -89,6 +102,63 @@ elestio deploy PostgreSQL \
   --version 16 \
   --support level1
 ```
+
+### Clusters
+
+Clustering is available for 19 templates - PostgreSQL, MySQL, Redis, ClickHouse,
+RabbitMQ, OpenSearch, Keycloak and others. Run `elestio clusters templates` for
+the current list, which is read from the catalog rather than hardcoded.
+
+```bash
+# What can be clustered, and each one's minimum node count
+elestio clusters templates
+
+# 1 primary + 2 replicas. Always check the VM count first: billing is per VM.
+elestio deploy postgresql --cluster --nodes 3 --dry-run
+elestio deploy postgresql --cluster --nodes 3
+
+# MySQL is the only software that supports writes on several nodes
+elestio deploy mysql --cluster --cluster-mode multi-master
+```
+
+| Option | Description |
+|--------|-------------|
+| `--cluster` | Deploy a cluster instead of a single node |
+| `--nodes <n>` | **Total** nodes, primary included. Defaults to the template minimum, caps at 15 |
+| `--cluster-mode <mode>` | `primary-replica` (default) or `multi-master` |
+
+`--nodes 3` means 1 primary and 2 replicas, and bills 3 VMs.
+
+ClickHouse, Vault, OpenSearch, RabbitMQ, rke2 and Nats elect a leader by
+quorum and need at least 3 nodes; everything else starts at 2. The CLI checks
+this before calling the API, because a cluster the API rejects has often
+already started billing its VMs.
+
+| Command | Description |
+|---------|-------------|
+| `elestio clusters` | List clusters in the project |
+| `elestio clusters info <clusterID>` | Cluster details and its nodes |
+| `elestio clusters nodes <clusterID>` | List the active nodes |
+| `elestio clusters templates` | Software that supports clustering |
+| `elestio clusters promote <clusterID> <vmID> --force` | Promote a replica to primary |
+| `elestio clusters failover <clusterID> on\|off` | Turn automatic failover on or off |
+| `elestio clusters resync <clusterID> --force` | Re-sync replicas from the primary |
+| `elestio clusters lock <clusterID>` | Enable termination protection |
+| `elestio clusters unlock <clusterID>` | Disable termination protection |
+| `elestio clusters delete <clusterID> --force` | Delete the cluster and all its nodes |
+
+`promote`, `resync` and `delete` require `--force`: promotion demotes the
+current primary, re-sync **erases all data on the replicas** and replaces it
+with a copy of the primary, and delete removes every node. A locked cluster
+must be unlocked before it can be deleted.
+
+`failover` does not switch the primary itself. It turns on or off the automatic
+failover that promotes a replica when the primary goes down; use `promote` to
+switch by hand. Its state shows in `clusters info`.
+
+Replicas are read-only and, unlike the primary, do not accept SSL connections:
+a client with `sslmode=require` can write to the primary but cannot read from a
+replica.
 
 ### Server Actions
 
@@ -213,8 +283,77 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 
 ### CI/CD
 
+There are two very different things you can put on a CI/CD target, and picking
+the wrong one is the usual reason a pipeline comes up empty:
+
+| You want to run | Use | Why |
+|---|---|---|
+| Software from the Elestio catalog (n8n, Rybbit, Plausible...) | `cicd deploy-template` | Reads the template's `elestio.yml` for ports, env vars and lifecycle hooks |
+| Your own application from your own repo | `cicd create --auto` | You supply the build and run commands |
+
+#### Deploying catalog software as a pipeline
+
+```bash
+# 1. Create a CI/CD target if you do not have one (this is a VM)
+elestio deploy CI-CD-Target --name my-target
+
+# 2. Find the software
+elestio cicd templates n8n
+
+# 3. See exactly what will be created, without creating it
+elestio cicd deploy-template n8n --target <vmID> --dry-run
+
+# 4. Deploy
+elestio cicd deploy-template n8n --target <vmID>
+```
+
+Every catalog entry has a companion repo at
+`github.com/elestio-examples/<software>` containing a `docker-compose.yml` and
+an `elestio.yml`. The `elestio.yml` is what makes the software actually run:
+
+```yaml
+config:       { runTime, version, buildCommand, runCommand, buildDir }
+environments: [{ key, value }]     # becomes the pipeline's env vars
+ports:        [{ protocol, targetPort, public, path }]
+lifeCycleConfig: { preInstallCommand, postInstallCommand, ... }
+webUI:        [{ url, label, login, password }]   # credentials printed on success
+```
+
+`deploy-template` reads that file and builds the pipeline from it. Passwords
+written as `random_password` are generated, `[EMAIL]` becomes your account
+email, and `[CI_CD_DOMAIN]` is resolved by the platform once the pipeline has a
+domain.
+
+**Two routes:**
+
+| | compose (default) | git (`--owner <git-user>`) |
+|---|---|---|
+| What it does | Inlines the template's `docker-compose.yml` | Generates the template repo into your Git account, then builds from it |
+| Needs a Git account | No | Yes, connected in the dashboard |
+| Lifecycle scripts | Skipped | Run |
+| Repo files the compose mounts | Unavailable | Available |
+| Works for | Templates that need no files from the repo | Every template |
+
+The compose route has no checkout, so a template whose `docker-compose.yml`
+bind-mounts a file from its repo cannot work: Docker creates the missing source
+as an empty directory and the container fails to start. The CLI detects this
+from the compose file and refuses upfront, naming the files, rather than
+letting the build fail a minute later with a `runc` error. `--force` overrides.
+
+This affects more templates than you would expect - n8n
+(`./n8n-task-runners.json`), Rybbit (four files under `./configs/`) and
+WordPress (`./php.ini`) are all in this category. Vaultwarden, Redis and
+Metabase deploy cleanly on the compose route.
+
+> **The git route is currently unavailable.** It needs
+> `POST /api/cicd/createRepoByTemplate`, which the Elestio API returns 404 for:
+> the controller exists in the backend but is not registered in its route
+> whitelist. The CLI reports this explicitly instead of surfacing a bare 404.
+
 | Command | Description |
 |---------|-------------|
+| `elestio cicd templates [query]` | List catalog software deployable as a pipeline |
+| `elestio cicd deploy-template <software> --target <vmID>` | Deploy catalog software as a pipeline |
 | `elestio cicd targets` | List CI/CD targets |
 | `elestio cicd pipelines <vmID>` | List pipelines |
 | `elestio cicd pipeline-info <vmID> <pipelineID>` | Pipeline details |
@@ -224,27 +363,58 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | `elestio cicd pipeline-resync <vmID> <pipelineID>` | Re-sync pipeline |
 | `elestio cicd pipeline-logs <vmID> <pipelineID>` | View pipeline logs |
 | `elestio cicd pipeline-history <vmID> <pipelineID>` | Build history |
-| `elestio cicd create --auto --target <vmID> --name X --repo owner/repo` | Auto-create pipeline |
+| `elestio cicd create --auto --target <vmID> --name X --repo owner/repo` | Pipeline from your own repo |
 | `elestio cicd create <config.json>` | Create from config file |
 | `elestio cicd template [mode]` | Generate config template |
 | `elestio cicd domains <vmID> <pipelineID>` | List pipeline domains |
 | `elestio cicd registries` | List Docker registries |
-| `elestio cicd registry-add --name X --username U --password P --url REPO` | Add Docker Hub registry |
-| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type registry.gitlab.com --repo-id ID` | Add GitLab.com registry |
-| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type gitlab-self-hosted --repo-id ID --gitlab-url gitlab.company.com` | Add self-hosted GitLab registry |
-| `elestio cicd registry-add --name X --username U --password P --url REPO --registry-type ghcr.io` | Add GitHub Container Registry |
 
-**`registry-add` options:**
+**`deploy-template` options:**
+
+| Option | Description |
+|--------|-------------|
+| `--target <vmID>` | **Required.** CI/CD target to deploy onto (`elestio cicd targets`) |
+| `--owner <user-or-org>` | Switches to the git route and names the account to create the repo in |
+| `--no-git` | Force the compose route even when `--owner` is given |
+| `--name <name>` | Pipeline name (defaults to the software name) |
+| `--branch <branch>` | Template branch (default `main`) |
+| `--private` | Create the generated repo as private |
+| `--non-org` | The owner is a personal account, not an organisation |
+| `--auth-id <id>` | Git auth ID, when you have more than one account connected |
+| `--git-type <type>` | `GITHUB` (default) or `GITLAB` |
+| `--repo-name <name>` | Template repo to use, when it differs from the software name |
+| `--build-cmd`, `--run-cmd`, `--install-cmd`, `--build-dir` | Override the values from `elestio.yml` (git route only) |
+| `--variables <KEY=VALUE...>` | Override the environment variables, newline-separated (git route only) |
+| `--force` | Deploy on the compose route even when the compose mounts a repo file |
+| `--dry-run` | Print the plan, create nothing |
+
+#### Pipelines from your own repository
+
+```bash
+elestio cicd create --auto --target <vmID> --name my-app --repo acme/my-app \
+  --mode github --build-cmd "npm run build" --run-cmd "npm start"
+```
+
+Modes: `github`, `github-fullstack`, `gitlab`, `gitlab-fullstack`, `docker`.
+
+#### Docker registries
+
+| Command | Description |
+|---------|-------------|
+| `elestio cicd registry-add --name X --username U --password P --url REPO` | Docker Hub |
+| `... --registry-type registry.gitlab.com --repo-id ID` | GitLab.com |
+| `... --registry-type gitlab-self-hosted --repo-id ID --gitlab-url gitlab.company.com` | Self-hosted GitLab |
+| `... --registry-type ghcr.io` | GitHub Container Registry |
 
 | Option | Description |
 |--------|-------------|
 | `--name` | Unique identity nickname for the registry credential |
 | `--username` | Registry username |
 | `--password` | Registry password or access token |
-| `--url` | Repository path (e.g. `myuser/myrepo`) — **not** the registry host |
-| `--registry-type` | Registry host: `docker.io` (default), `registry.gitlab.com`, `gitlab-self-hosted`, `ghcr.io` |
-| `--repo-id` | GitLab project/repo ID — required for `registry.gitlab.com` and `gitlab-self-hosted` |
-| `--gitlab-url` | Self-hosted GitLab hostname (e.g. `gitlab.company.com`) — required for `gitlab-self-hosted` |
+| `--url` | Repository path (e.g. `myuser/myrepo`) - **not** the registry host |
+| `--registry-type` | `docker.io` (default), `registry.gitlab.com`, `gitlab-self-hosted`, `ghcr.io` |
+| `--repo-id` | GitLab project/repo ID - required for both GitLab types |
+| `--gitlab-url` | Self-hosted GitLab hostname - required for `gitlab-self-hosted` |
 
 ### Billing
 
@@ -263,14 +433,67 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | `--version`, `-v` | Show version |
 | `--debug` | Show full error stack traces |
 
+### Passing values that start with `-`
+
+`--flag value` treats a value like `-p` or `--port` as the next flag. For any
+value that begins with a dash - passwords, negative numbers - use the
+`--flag=value` form instead:
+
+```bash
+elestio cicd registry-add --name ghcr --username me --password='-Xk9secret'
+```
+
+Everything after a bare `--` is treated as a positional argument.
+
 ## Configuration
 
-Credentials and config are stored in `~/.elestio/`:
+Credentials and config are stored in `~/.elestio/` (directory mode 0700):
 
 - `~/.elestio/credentials` - Email and API token (mode 0600)
-- `~/.elestio/config.json` - JWT cache, default project, provider defaults
+- `~/.elestio/config.json` - JWT cache, default project, provider defaults (mode 0600; the cached JWT is a bearer credential)
+
+Requests to the API time out after 60s rather than hanging.
 
 Get your API token from [Elestio Dashboard > Security](https://dash.elest.io/account/security).
+
+## Troubleshooting
+
+**My pipeline deployed but nothing is running.**
+The pipeline was created without the template's configuration. Use
+`elestio cicd deploy-template <software>` rather than `cicd create` for catalog
+software: it reads the template's `elestio.yml` for ports, environment
+variables and lifecycle hooks. `cicd create` builds a bare pipeline and expects
+you to supply all of that yourself.
+
+**The software starts, then exits, or the build fails.**
+Check the build log: `elestio cicd pipeline-history <vmID> <pipelineID>`, then
+`elestio cicd pipeline-log <vmID> --pipeline <id> --file <log>`. On the compose
+route the usual causes are a repo file the compose mounts (the CLI refuses
+these upfront unless you passed `--force`) or a template that genuinely needs
+its lifecycle scripts. Both need the git route, which is currently
+unavailable (see above), so for now there is no workaround for those
+templates.
+
+**`variables.trim is not a function` (500 Pipeline.CreateFailed).**
+The `variables` field must be a newline-separated string, never an array. The
+CLI enforces this from 1.1.0; if you are on an older version, upgrade with
+`npm install -g elestio@latest`.
+
+**`does not support clustering`.**
+Only some templates can be clustered. Run `elestio clusters templates` for the
+current list.
+
+**`needs at least 3 nodes`.**
+ClickHouse, Vault, OpenSearch, RabbitMQ, rke2 and Nats elect a leader by
+quorum and cannot run on two nodes.
+
+**Authentication keeps failing.**
+API tokens can be revoked or expire. Get a new one from
+[Dashboard > Security](https://dash.elest.io/account/security) and re-run
+`elestio login`. Check what is stored with `elestio config`.
+
+**A value starting with `-` is ignored.**
+Use `--flag=value`. See [Global Options](#global-options).
 
 ## Documentation 
    https://docs.elest.io/books/elestio-cli-skill/page/overview

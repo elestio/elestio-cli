@@ -1,11 +1,7 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
-import { log, colors, formatTable, sleep, outputJson } from '../utils.js';
-import { getServiceDetails } from './services.js';
+import { log, colors, formatTable, outputJson } from '../utils.js';
 import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { execSync } from 'child_process';
 
 // ── List / Details ──
 
@@ -147,13 +143,29 @@ export async function getPipelineLogs(vmID, pipelineID, projectId) {
 
 export async function getPipelineHistory(vmID, pipelineID, projectId, json = false) {
   const result = await doActionOnPipeline(vmID, pipelineID, 'getHistory', {}, projectId);
-  const history = result.data?.history || result.history || [];
+  // The action answers {data: [...]}, not the {data: {history: [...]}} shape
+  // the other endpoints use, so history never rendered.
+  const history = Array.isArray(result.data) ? result.data : (result.data?.history || result.history || []);
   if (json) { outputJson(history); return history; }
   if (history.length === 0) { log('info', 'No build history'); return []; }
 
+  const rows = history.map(h => ({
+    status: h.status || 'N/A',
+    action: h.action || 'N/A',
+    duration: h.duration !== undefined ? `${h.duration}s` : 'N/A',
+    startTime: h.startTime ? new Date(h.startTime).toISOString().replace('T', ' ').slice(0, 19) : 'N/A',
+    log: h.logID || h.filepath || h.file || 'N/A'
+  }));
+
   console.log(`\n${colors.bold}Build History${colors.reset}\n`);
-  history.forEach(h => console.log(`  ${h.filepath || h.file}: ${h.status || 'N/A'}`));
-  console.log('');
+  console.log(formatTable(rows, [
+    { key: 'status', label: 'Status' },
+    { key: 'action', label: 'Action' },
+    { key: 'duration', label: 'Duration' },
+    { key: 'startTime', label: 'Started' },
+    { key: 'log', label: 'Log file' }
+  ]));
+  console.log(`\n  Read one with: ${colors.cyan}elestio cicd pipeline-log ${vmID} --pipeline ${pipelineID} --file <log file>${colors.reset}\n`);
   return history;
 }
 
@@ -203,9 +215,13 @@ export async function removePipelineDomain(vmID, pipelineID, domain, projectId) 
 export async function createPipeline(configFile) {
   if (!configFile || !fs.existsSync(configFile)) throw new Error(`Config file not found: ${configFile}`);
 
-  const pipelineConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
-  // Backend runs variables.trim(); it must be a string.
-  if (typeof pipelineConfig.variables !== 'string') pipelineConfig.variables = '';
+  const fileConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  // The backend runs variables.trim(), so it must be a string, never an array.
+  const pipelineConfig = {
+    ...fileConfig,
+    variables: typeof fileConfig.variables === 'string' ? fileConfig.variables : ''
+  };
+
   log('info', 'Creating pipeline...');
   const response = await apiRequest('/api/cicd/createCiCdExistServer', 'POST', pipelineConfig);
 
@@ -475,9 +491,14 @@ export async function getDockerRegistries(projectId = null, json = false) {
   const pid = projectId || config.defaultProject;
 
   const response = await apiRequest('/api/cicd/getDockerRegistry', 'GET', { projectID: String(pid) });
-  if (response.status !== 'OK') throw new Error(response.message || 'Failed');
+  // This endpoint answers with a bare array, not the usual {status, data}
+  // envelope -- and an empty project gets a bare []. Demanding the envelope
+  // turned "no registries" into an error.
+  if (!Array.isArray(response) && response.status === 'KO') {
+    throw new Error(response.message || 'Failed to list Docker registries');
+  }
 
-  const registries = response.data?.registries || [];
+  const registries = Array.isArray(response) ? response : (response.data?.registries || []);
   if (json) { outputJson(registries); return registries; }
   if (registries.length === 0) { log('info', 'No Docker registries'); return []; }
 

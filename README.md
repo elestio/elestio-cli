@@ -145,10 +145,12 @@ already started billing its VMs.
 | `elestio clusters resync <clusterID> --force` | Re-sync replicas from the primary |
 | `elestio clusters lock <clusterID>` | Enable termination protection |
 | `elestio clusters unlock <clusterID>` | Disable termination protection |
+| `elestio clusters delete <clusterID> --force` | Delete the cluster and all its nodes |
 
-`promote` and `resync` require `--force`: promotion demotes the current
-primary, and re-sync **erases all data on the replicas** and replaces it with a
-copy of the primary.
+`promote`, `resync` and `delete` require `--force`: promotion demotes the
+current primary, re-sync **erases all data on the replicas** and replaces it
+with a copy of the primary, and delete removes every node. A locked cluster
+must be unlocked before it can be deleted.
 
 `failover` does not switch the primary itself. It turns on or off the automatic
 failover that promotes a replica when the primary goes down; use `promote` to

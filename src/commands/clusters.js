@@ -6,7 +6,7 @@ import {
   minClusterNodes, supportsClustering, supportsMultiMaster
 } from '../constants.js';
 import { getTemplates } from './templates.js';
-import { listServicesRaw } from './services.js';
+import { listServicesRaw, deleteService } from './services.js';
 
 const APPID = 'CloudVM';
 
@@ -275,6 +275,33 @@ export async function promoteNode(clusterId, vmID, projectId, force) {
   if (response.status === 'KO') throw new Error(response.message || 'Promotion failed');
   log('success', `vmID ${vmID} is being promoted to primary of cluster ${clusterId}`);
   return response;
+}
+
+/**
+ * There is no cluster delete endpoint: deleting the primary service deletes
+ * every node with it. The primary changes after a promote, so it is looked up
+ * rather than asked of the caller.
+ */
+export function clusterDeletionTarget(info) {
+  if (info.isProtected) {
+    throw new Error(`Cluster ${info.id} is locked. Unlock it first with: elestio clusters unlock ${info.id}`);
+  }
+  if (!info.primaryProviderServerID) throw new Error(`Cluster ${info.id} has no known primary node`);
+  return String(info.primaryProviderServerID);
+}
+
+export async function deleteCluster(clusterId, projectId, force) {
+  if (!force) {
+    throw new Error(`Deleting cluster ${clusterId} deletes every node and its data. Re-run with --force.`);
+  }
+
+  const pid = requireProject(projectId);
+  const info = await getClusterInfo(clusterId, pid);
+  const vmID = clusterDeletionTarget(info);
+  const nodes = await listNodesRaw(info, pid);
+
+  await deleteService(vmID, { force: true, project: pid });
+  log('success', `Cluster ${clusterId} deletion initiated (${nodes.length || info.nbNodes} nodes)`);
 }
 
 // ── Catalog ──

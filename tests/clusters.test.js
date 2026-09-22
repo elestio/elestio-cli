@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectClusterNodes, buildFailoverPayload, parseToggle } from '../src/commands/clusters.js';
+import { selectClusterNodes, buildFailoverPayload, parseToggle, clusterDeletionTarget } from '../src/commands/clusters.js';
 
 // Shapes taken from a live 2-node PostgreSQL cluster (cluster 65819)
 const cluster = { id: 65819, primaryServerID: '548816', primaryProviderServerID: '947349' };
@@ -47,5 +47,21 @@ describe('parseToggle', () => {
   it('rejects anything else', () => {
     expect(() => parseToggle(undefined)).toThrow(/on\|off/);
     expect(() => parseToggle('--force')).toThrow(/on\|off/);
+  });
+});
+
+describe('clusterDeletionTarget', () => {
+  it('deletes through the current primary, which takes every node with it', () => {
+    expect(clusterDeletionTarget({ id: 65819, primaryProviderServerID: '947350', isProtected: 0 })).toBe('947350');
+  });
+
+  it('refuses a locked cluster and says how to unlock it', () => {
+    expect(() => clusterDeletionTarget({ id: 65819, primaryProviderServerID: '947350', isProtected: 1 }))
+      .toThrow(/elestio clusters unlock 65819/);
+  });
+
+  it('refuses when the primary is unknown', () => {
+    expect(() => clusterDeletionTarget({ id: 65819, primaryProviderServerID: null, isProtected: 0 }))
+      .toThrow(/primary/);
   });
 });

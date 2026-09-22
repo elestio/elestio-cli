@@ -63,7 +63,7 @@ describe('registry integrity', () => {
 
   it('exposes the new cluster and template commands', () => {
     expect(Object.keys(registry.clusters.actions)).toEqual(
-      expect.arrayContaining(['list', 'info', 'nodes', 'templates', 'promote', 'failover', 'resync', 'lock', 'unlock'])
+      expect.arrayContaining(['list', 'info', 'nodes', 'templates', 'promote', 'failover', 'resync', 'lock', 'unlock', 'delete'])
     );
     expect(registry.cicd.actions['deploy-template']).toBeTruthy();
   });

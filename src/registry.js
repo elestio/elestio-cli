@@ -347,6 +347,10 @@ export const registry = {
         summary: 'Re-sync replicas from the primary, erasing replica data (--force)', usage: 'resync <clusterID> --force',
         async run({ args }) { await (await load.clusters()).resyncCluster(requireArg(args._[2], 'clusters resync <clusterID> --force'), args.project, !!args.force); }
       },
+      delete: {
+        summary: 'Delete a cluster and all its nodes (--force)', usage: 'delete <clusterID> --force',
+        async run({ args }) { await (await load.clusters()).deleteCluster(requireArg(args._[2], 'clusters delete <clusterID> --force'), args.project, !!args.force); }
+      },
       lock: {
         summary: 'Enable termination protection', usage: 'lock <clusterID>',
         async run({ args }) { await (await load.clusters()).lockCluster(requireArg(args._[2], 'clusters lock <clusterID>')); }

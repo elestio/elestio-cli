@@ -131,6 +131,21 @@ describe('validateClusterOptions', () => {
     expect(() => validateClusterOptions({ enabled: true }, wordpress)).toThrow(/does not support clustering/);
   });
 
+  it("trusts the catalog's isCluster flag over the built-in list", () => {
+    // Jitsu is clusterable in the catalog but absent from the dashboard's
+    // hardcoded list, which the built-in constant mirrors.
+    expect(validateClusterOptions({}, { id: 178, title: 'Jitsu', isCluster: 1 }).nodes).toBe(2);
+    // ...and a template the catalog has since un-flagged is refused even
+    // though its ID is still in the constant.
+    expect(() => validateClusterOptions({}, { id: 11, title: 'PostgreSQL', isCluster: 0 }))
+      .toThrow(/does not support clustering/);
+  });
+
+  it('falls back to the built-in list when the catalog omits the flag', () => {
+    expect(validateClusterOptions({}, { id: 11, title: 'PostgreSQL' }).nodes).toBe(2);
+    expect(() => validateClusterOptions({}, { id: 26, title: 'WordPress' })).toThrow(/does not support clustering/);
+  });
+
   it('defaults to 2 nodes in primary-replica mode', () => {
     expect(validateClusterOptions({}, pg)).toEqual({ nodes: 2, isReplica: true, mode: 'primary-replica' });
   });

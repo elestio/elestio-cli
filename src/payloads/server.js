@@ -22,7 +22,7 @@ import {
 export function validateClusterOptions(cluster, template) {
   const templateId = Number(template.id);
 
-  if (!supportsClustering(templateId)) {
+  if (!supportsClustering(template)) {
     throw new Error(
       `"${template.title}" does not support clustering. ` +
       'Run "elestio clusters templates" to list the software that does.'

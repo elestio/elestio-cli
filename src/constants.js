@@ -1,8 +1,9 @@
 // ── Clustering ──
 //
-// Clustering is only offered for the templates below. The list mirrors the one
-// the dashboard enforces; deploying a cluster on any other template is rejected
-// by the API after the VMs have already been billed, so the CLI checks upfront.
+// The catalog marks clusterable software with isCluster=1, and that is what we
+// trust: it tracks new templates on its own. The list below is only the offline
+// fallback for when a template object is unavailable -- it mirrors the
+// dashboard's hardcoded list and is therefore always at risk of lagging.
 
 export const CLUSTER_TEMPLATE_IDS = [
   3,   // Redis
@@ -42,8 +43,15 @@ export function minClusterNodes(templateId) {
   return CLUSTER_MIN_THREE_NODES.includes(Number(templateId)) ? 3 : 2;
 }
 
-export function supportsClustering(templateId) {
-  return CLUSTER_TEMPLATE_IDS.includes(Number(templateId));
+/**
+ * @param {object|number} template  a catalog template, or just its ID
+ */
+export function supportsClustering(template) {
+  if (template && typeof template === 'object' && template.isCluster !== undefined) {
+    return Number(template.isCluster) === 1;
+  }
+  const id = Number(template && typeof template === 'object' ? template.id : template);
+  return CLUSTER_TEMPLATE_IDS.includes(id);
 }
 
 export function supportsMultiMaster(templateId) {

@@ -145,12 +145,31 @@ already started billing its VMs.
 | `elestio clusters resync <clusterID> --force` | Re-sync replicas from the primary |
 | `elestio clusters lock <clusterID>` | Enable termination protection |
 | `elestio clusters unlock <clusterID>` | Disable termination protection |
+| `elestio clusters add-node <clusterID> [--dry-run]` | Add a node, copying the primary's provider, region, size and version |
+| `elestio clusters remove-node <clusterID> <vmID> --force` | Remove a replica node and its VM |
+| `elestio clusters firewall <clusterID>` | Show which IPs each port accepts |
+| `elestio clusters firewall-restrict <clusterID> --port P --ips ip1,ip2` | Only accept a port from these IPs, on every node |
+| `elestio clusters firewall-open <clusterID> --port P` | Open a port to everyone again |
 | `elestio clusters delete <clusterID> --force` | Delete the cluster and all its nodes |
 
 `promote`, `resync` and `delete` require `--force`: promotion demotes the
 current primary, re-sync **erases all data on the replicas** and replaces it
 with a copy of the primary, and delete removes every node. A locked cluster
 must be unlocked before it can be deleted.
+
+**Nodes.** `add-node` copies the primary: same provider, region, size and
+software version (`--size`, `--region`, `--provider` or `--version` to change
+them). It is billed as one more VM, so dry-run it first. It needs remote
+backups on the primary, which seed the new node (`elestio backups auto-enable
+<vmID>`), and is not available on multi-master clusters. After the VM is
+deployed, Elestio still spends a few minutes turning it into a replica: the
+cluster reads `running` meanwhile, and the CLI refuses other node or firewall
+changes until that is done. `remove-node` only removes replicas; to remove the
+primary, `promote` a replica first or delete the whole cluster.
+
+**Firewall.** `firewall-restrict` applies to every node, and the cluster's
+own nodes stay allowed so replication keeps working. Use it rather than
+`elestio firewall` on a single node.
 
 `failover` does not switch the primary itself. It turns on or off the automatic
 failover that promotes a replica when the primary goes down; use `promote` to
@@ -267,6 +286,8 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | `elestio ssh <vmID> --direct` | Get direct SSH connection info |
 | `elestio vscode <vmID>` | Get VSCode web URL |
 | `elestio files <vmID>` | Get file explorer URL |
+| `elestio logs <vmID> [--mode app\|install]` | Open a live log view (temporary URL): the app's container logs, or the install log |
+| `elestio audits <vmID> [--days N]` | Audit trail: who did what (default: last 30 days) |
 
 ### Volumes
 

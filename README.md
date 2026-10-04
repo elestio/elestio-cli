@@ -355,11 +355,14 @@ domain.
 | Repo files the compose mounts | Unavailable | Available |
 | Works for | Templates that need no files from the repo | Every template |
 
-The compose route has no checkout, so a template whose `docker-compose.yml`
-bind-mounts a file from its repo cannot work: Docker creates the missing source
-as an empty directory and the container fails to start. The CLI detects this
-from the compose file and refuses upfront, naming the files, rather than
-letting the build fail a minute later with a `runc` error. `--force` overrides.
+The compose route has no checkout and runs no install script, so a template
+whose `docker-compose.yml` bind-mounts a file cannot work: Docker creates the
+missing source as an empty directory and the container fails to start. The file
+may ship in the template repo (n8n's `./n8n-task-runners.json`) or be generated
+by an install script (Kafka writes its `./jaas/*.conf` in `preInstall`) - either
+way it is absent here. The CLI detects this from the compose file and refuses
+upfront, naming the files, rather than letting the build fail a minute later
+with a `runc` error. `--force` overrides, and will most likely still fail.
 
 Quoted mounts (`- "./.env:/app/.env"`) and the long `type: bind` syntax count
 too; missing them is how Chromadb once deployed into a broken container.
@@ -419,7 +422,7 @@ admin account or initial data, deploy it as a managed service instead.
 | `--build-cmd`, `--run-cmd`, `--install-cmd`, `--build-dir` | Override the values from `elestio.yml` (git route only) |
 | `--variables <KEY=VALUE...>` | Override the environment variables, newline-separated (git route only) |
 | `--force` | Deploy on the compose route even when the compose mounts a repo file |
-| `--dry-run` | Print the plan, create nothing |
+| `--dry-run` | Print the plan, create nothing - including on the git route, which never creates the repository |
 
 #### Pipelines from your own repository
 

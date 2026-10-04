@@ -209,7 +209,7 @@ export async function deployTemplate(nameOrId, options = {}) {
   log('success', `Config loaded: runtime "${elestioConfig.config.runTime}", ${elestioConfig.variables ? elestioConfig.variables.split('\n').length : 0} env vars, ${elestioConfig.ports.length} port(s)`);
 
   const payload = useGit
-    ? await buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig })
+    ? await buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig, dryRun: !!options.dryRun })
     : await buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force: options.force });
 
   if (options.dryRun) {
@@ -237,7 +237,7 @@ export async function deployTemplate(nameOrId, options = {}) {
   return response;
 }
 
-async function buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig }) {
+async function buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig, dryRun = false }) {
   const gitType = (options.gitType || 'GITHUB').toUpperCase();
 
   let authID = options.authId ? String(options.authId) : await findGitAuth(gitType);
@@ -253,14 +253,21 @@ async function buildGitRoute({ options, projectId, target, template, repoName, p
     throw new Error('The Git account or organisation to create the repo in is required (--owner <user-or-org>)');
   }
 
-  log('info', `Creating ${owner}/${repoName} from ${TEMPLATE_REPO_OWNER}/${repoName}...`);
-  const repo = await generateRepoFromTemplate({
-    gitType, authID, owner, repoName,
-    templateName: repoName,
-    isPrivate: !!options.private,
-    isNonOrg: !!options.nonOrg
-  });
-  log('success', `Repo created: ${owner}/${repoName}`);
+  // A dry run must create nothing, and this step creates a repository in the
+  // user's Git account.
+  let repo = null;
+  if (dryRun) {
+    log('info', `Would create ${owner}/${repoName} from ${TEMPLATE_REPO_OWNER}/${repoName}`);
+  } else {
+    log('info', `Creating ${owner}/${repoName} from ${TEMPLATE_REPO_OWNER}/${repoName}...`);
+    repo = await generateRepoFromTemplate({
+      gitType, authID, owner, repoName,
+      templateName: repoName,
+      isPrivate: !!options.private,
+      isNonOrg: !!options.nonOrg
+    });
+    log('success', `Repo created: ${owner}/${repoName}`);
+  }
 
   return buildGitPipelinePayload({
     target,
@@ -289,10 +296,12 @@ async function buildComposeRoute({ projectId, target, repoName, pipelineName, br
   const fileMounts = repoFileMounts(compose);
   if (fileMounts.length > 0 && !force) {
     throw new Error(
-      `"${repoName}" bind-mounts ${fileMounts.length} file(s) that live in the template repo ` +
-      `(${fileMounts.join(', ')}). The compose route has no checkout, so Docker creates each one as an ` +
-      'empty directory and the container fails to start. Use the Git route (--owner <git-user>) for this ' +
-      'software, or --force to deploy anyway.'
+      `"${repoName}" bind-mounts ${fileMounts.length} file(s) that will not exist on the compose route ` +
+      `(${fileMounts.join(', ')}): either they ship in the template repo, or its install scripts create them ` +
+      '(Kafka generates its jaas/ files in preInstall). This route has no checkout and runs no install ' +
+      'script, so Docker creates each path as an empty directory and the container fails to start. The Git ' +
+      'route would handle both, but the Elestio API does not expose it today: deploy this software from the ' +
+      'dashboard, or as a managed service. --force deploys anyway, and will most likely fail.'
     );
   }
 

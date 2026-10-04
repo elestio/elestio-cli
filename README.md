@@ -277,6 +277,18 @@ replica.
 
 S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 
+### Rate limiting
+
+The API throttles bursts and then answers `Access temporarily restricted` on
+every endpoint, for several minutes, authentication included. The CLI reports
+it as such rather than as a credentials problem.
+
+Loops over many services or templates must be sequential, with a pause between
+calls: a sweep of the 420-template catalogue at 8 requests in parallel got an
+account restricted for over half an hour. One request at a time, ~1s apart, is
+safe. A script that treats the message as "no data" will silently produce empty
+results, so stop on it instead.
+
 ### Access
 
 | Command | Description |

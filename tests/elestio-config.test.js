@@ -153,6 +153,16 @@ describe('password generators', () => {
 });
 
 describe('repoFileMounts', () => {
+  // 8 of 22 sampled templates read an env_file; without a checkout the file is
+  // missing and docker compose refuses to start.
+  it('detects env_file, inline and as a list', () => {
+    expect(repoFileMounts('services:\n  app:\n    env_file: ./.env\n')).toEqual(['./.env']);
+    // a bare name is repo-relative too
+    expect(repoFileMounts('services:\n  app:\n    env_file: [".env.prod"]\n')).toEqual(['.env.prod']);
+    expect(repoFileMounts('services:\n  app:\n    env_file: ["./.env.prod"]\n')).toEqual(['./.env.prod']);
+    expect(repoFileMounts('services:\n  app:\n    env_file:\n      - ./.env\n      - ./extra.env\n')).toEqual(['./.env', './extra.env']);
+  });
+
   // Chromadb (441) quotes its mounts, so the guard never fired and the
   // container failed with 'not a directory' once deployed.
   it('detects quoted mounts', () => {

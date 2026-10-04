@@ -3,7 +3,7 @@ import { loadConfig } from '../config.js';
 import { log, colors, outputJson, formatTable } from '../utils.js';
 import { getTemplates } from './templates.js';
 import { createSubstitutions, normalizeElestioConfig, repoFileMounts } from '../templates/elestio-config.js';
-import { buildGitPipelinePayload, buildComposePipelinePayload } from '../payloads/pipeline.js';
+import { buildGitPipelinePayload, buildComposePipelinePayload, buildTemplateRepoPipelinePayload } from '../payloads/pipeline.js';
 import { parseGitAuthId } from './cicd.js';
 import { TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
 
@@ -16,11 +16,18 @@ import { TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
  * produces a pipeline that starts nothing, which is why this is a dedicated
  * command rather than a flag on `cicd create`.
  *
- * Two routes:
- *   git     - generate the template repo into the user's own Git account, then
- *             point the pipeline at it. Keeps the lifecycle scripts.
- *   compose - inline the template's docker-compose.yml. No Git account needed,
- *             but lifecycle scripts are lost because there is no checkout.
+ * Three routes:
+ *   repo (default) - point the pipeline at the elestio-examples repo itself.
+ *             Elestio clones it on the VM with its own Git token, so the repo's
+ *             files exist and its install scripts run. No Git account needed,
+ *             nothing copied into the user's account. This is what the
+ *             dashboard does.
+ *   inline  - inline the docker-compose.yml only (--inline-compose). No
+ *             checkout: install scripts are skipped and any file the compose
+ *             mounts or reads (env_file) is missing. Half the catalogue cannot
+ *             work this way.
+ *   git     - generate the template repo into the user's own Git account
+ *             (--owner). Needs an endpoint the API does not expose (404).
  */
 
 function templateRepoUrl(repoName) {
@@ -208,13 +215,16 @@ export async function deployTemplate(nameOrId, options = {}) {
   }
   log('success', `Config loaded: runtime "${elestioConfig.config.runTime}", ${elestioConfig.variables ? elestioConfig.variables.split('\n').length : 0} env vars, ${elestioConfig.ports.length} port(s)`);
 
-  const payload = useGit
+  const route = useGit ? 'git' : (options.inlineCompose ? 'inline' : 'repo');
+  const payload = route === 'git'
     ? await buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig, dryRun: !!options.dryRun })
-    : await buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force: options.force });
+    : route === 'inline'
+      ? await buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force: options.force })
+      : await buildTemplateRepoRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig });
 
   if (options.dryRun) {
-    if (options.json) { outputJson({ dryRun: true, route: useGit ? 'git' : 'compose', payload }); return payload; }
-    printPlan({ template, repoName, pipelineName, target, elestioConfig, useGit, branch });
+    if (options.json) { outputJson({ dryRun: true, route, payload }); return payload; }
+    printPlan({ template, repoName, pipelineName, target, elestioConfig, route, branch });
     log('info', 'To deploy, run the same command without --dry-run');
     return payload;
   }
@@ -229,7 +239,7 @@ export async function deployTemplate(nameOrId, options = {}) {
   log('success', `Pipeline "${pipelineName}" created on ${target.displayName}`);
 
   if (options.json) {
-    outputJson({ status: 'OK', pipelineName, target: target.vmID, route: useGit ? 'git' : 'compose', webUI: elestioConfig.webUI, response });
+    outputJson({ status: 'OK', pipelineName, target: target.vmID, route, webUI: elestioConfig.webUI, response });
     return response;
   }
 
@@ -284,6 +294,22 @@ async function buildGitRoute({ options, projectId, target, template, repoName, p
     appType: 'docker',
     overrides: collectOverrides(options)
   });
+}
+
+/**
+ * Default route: the pipeline points at the template repo, which Elestio clones
+ * on the VM. Nothing to refuse -- the repo's files are there and its install
+ * scripts run.
+ */
+async function buildTemplateRepoRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig }) {
+  log('info', `Fetching docker-compose from ${TEMPLATE_REPO_OWNER}/${repoName}...`);
+  const compose = await fetchCompose(sourceRepoUrl, branch, projectId);
+  log('success', 'Compose file loaded');
+
+  const hooks = installHooks(elestioConfig);
+  if (hooks.length > 0) log('info', `Install scripts run from the cloned repo: ${hooks.join(', ')}`);
+
+  return buildTemplateRepoPipelinePayload({ target, projectId, pipelineName, compose, repoName, branch, elestioConfig });
 }
 
 async function buildComposeRoute({ projectId, target, repoName, pipelineName, branch, sourceRepoUrl, elestioConfig, force }) {
@@ -346,13 +372,18 @@ function collectOverrides(options) {
   return overrides;
 }
 
-function printPlan({ template, repoName, pipelineName, target, elestioConfig, useGit, branch }) {
+function printPlan({ template, repoName, pipelineName, target, elestioConfig, route, branch }) {
   console.log(`\n${colors.bold}Pipeline Preview (--dry-run)${colors.reset}\n`);
   console.log(`  Software:   ${colors.cyan}${template.title}${colors.reset} (ID: ${template.id})`);
   console.log(`  Template:   ${TEMPLATE_REPO_OWNER}/${repoName} @ ${branch}`);
   console.log(`  Pipeline:   ${pipelineName}`);
   console.log(`  Target:     ${target.displayName} (${target.vmID})`);
-  console.log(`  Route:      ${useGit ? 'git (repo generated in your account, lifecycle scripts kept)' : 'compose (inlined, lifecycle scripts skipped)'}`);
+  const routes = {
+    repo: 'repo (Elestio clones the template repo on the VM, install scripts run)',
+    inline: 'inline compose (no checkout: install scripts skipped, mounted files missing)',
+    git: 'git (repo generated in your account, install scripts run)'
+  };
+  console.log(`  Route:      ${routes[route]}`);
   console.log(`  Runtime:    ${elestioConfig.config.runTime || 'N/A'}`);
   console.log(`  Ports:      ${elestioConfig.ports.map(p => `${p.listeningPort}->${p.targetPort}`).join(', ') || 'default'}`);
   console.log(`  Env vars:   ${elestioConfig.variables ? elestioConfig.variables.split('\n').map(v => v.split('=')[0]).join(', ') : 'none'}`);

@@ -185,8 +185,6 @@ export function repoFileMounts(compose) {
   };
 
   // Short syntax, quoted or not: - ./file:/in/container[:ro]
-  // Many templates quote their mounts (Chromadb among them), and the
-  // unquoted-only pattern let those through silently.
   for (const match of compose.matchAll(/^\s*-\s+["']?(\.{1,2}\/[^\s:"']+)["']?\s*:/gm)) {
     add(match[1]);
   }
@@ -194,6 +192,20 @@ export function repoFileMounts(compose) {
   // Long syntax: - type: bind / source: ./file / target: /in/container
   for (const match of compose.matchAll(/^\s*source:\s*["']?(\.{1,2}\/[^\s"']+)["']?\s*$/gm)) {
     add(match[1]);
+  }
+
+  // env_file, inline or as a list. Docker refuses to start when the file is
+  // missing, and 8 of the 22 catalogue templates sampled read one.
+  for (const match of compose.matchAll(/^\s*env_file:\s*(?:\[([^\]]*)\]|["']?([^\s"'\[]+)["']?)\s*$/gm)) {
+    for (const entry of (match[1] ?? match[2] ?? '').split(',')) {
+      const file = entry.trim().replace(/^["']|["']$/g, '');
+      if (file.startsWith('.')) add(file);
+    }
+  }
+  for (const block of compose.matchAll(/^\s*env_file:\s*$((?:\n\s*-\s+.*)+)/gm)) {
+    for (const item of block[1].matchAll(/^\s*-\s+["']?([^\s"']+)["']?\s*$/gm)) {
+      if (item[1].startsWith('.')) add(item[1]);
+    }
   }
 
   return [...mounts];

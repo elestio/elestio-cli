@@ -50,6 +50,28 @@ async function parseJson(response, endpoint) {
   }
 }
 
+/**
+ * The API throttles bursts and then answers "Access temporarily restricted"
+ * for a while, on authentication as well as on any endpoint. Saying so plainly
+ * matters: it reads like a credentials or permissions problem otherwise, and a
+ * script that treats it as "no data" silently produces wrong results.
+ */
+export function rateLimitMessage(message) {
+  if (!/temporarily restricted|too many requests|rate limit/i.test(String(message ?? ''))) return null;
+  return 'The Elestio API has temporarily restricted this account for sending too many requests. ' +
+    'Wait a few minutes before retrying, and space out bulk loops (one request at a time). ' +
+    `API said: "${String(message).trim()}"`;
+}
+
+function raiseIfRateLimited(data) {
+  const message = rateLimitMessage(data?.message);
+  if (message) {
+    const error = new Error(message);
+    error.rateLimited = true;
+    throw error;
+  }
+}
+
 async function authenticate(email, token) {
   const response = await httpRequest(`${BASE_URL}/api/auth/checkAPIToken`, {
     method: 'POST',
@@ -58,6 +80,8 @@ async function authenticate(email, token) {
   });
 
   const data = await parseJson(response, '/api/auth/checkAPIToken');
+
+  raiseIfRateLimited(data);
 
   if (data.status !== 'OK' || !data.jwt) {
     throw new Error(data.message || 'Authentication failed');
@@ -117,6 +141,10 @@ export async function apiRequest(endpoint, method = 'POST', body = {}, retried =
   }
 
   const data = await parseJson(response, endpoint);
+
+  // Before the auth check: a throttled account answers like a bad token, and
+  // clearing the JWT then re-authenticating only adds requests.
+  raiseIfRateLimited(data);
 
   const isAuthError = !retried && (
     (data.status === 'error' && data.message?.toLowerCase().includes('auth')) ||

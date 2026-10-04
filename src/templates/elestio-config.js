@@ -179,10 +179,22 @@ export function repoFileMounts(compose) {
   if (typeof compose !== 'string') return [];
 
   const mounts = new Set();
-  for (const match of compose.matchAll(/^\s*-\s+(\.{1,2}\/[^\s:]+):[^\s]+/gm)) {
-    const source = match[1];
+  const add = (source) => {
     const lastSegment = source.slice(source.lastIndexOf('/') + 1);
     if (/\.[A-Za-z0-9]{1,10}$/.test(lastSegment)) mounts.add(source);
+  };
+
+  // Short syntax, quoted or not: - ./file:/in/container[:ro]
+  // Many templates quote their mounts (Chromadb among them), and the
+  // unquoted-only pattern let those through silently.
+  for (const match of compose.matchAll(/^\s*-\s+["']?(\.{1,2}\/[^\s:"']+)["']?\s*:/gm)) {
+    add(match[1]);
   }
+
+  // Long syntax: - type: bind / source: ./file / target: /in/container
+  for (const match of compose.matchAll(/^\s*source:\s*["']?(\.{1,2}\/[^\s"']+)["']?\s*$/gm)) {
+    add(match[1]);
+  }
+
   return [...mounts];
 }

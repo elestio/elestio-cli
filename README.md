@@ -361,10 +361,21 @@ as an empty directory and the container fails to start. The CLI detects this
 from the compose file and refuses upfront, naming the files, rather than
 letting the build fail a minute later with a `runc` error. `--force` overrides.
 
+Quoted mounts (`- "./.env:/app/.env"`) and the long `type: bind` syntax count
+too; missing them is how Chromadb once deployed into a broken container.
+
 This affects more templates than you would expect - n8n
-(`./n8n-task-runners.json`), Rybbit (four files under `./configs/`) and
-WordPress (`./php.ini`) are all in this category. Vaultwarden, Redis and
-Metabase deploy cleanly on the compose route.
+(`./n8n-task-runners.json`), Chromadb (`./.env`, `./overrides/system.js`),
+Rybbit (four files under `./configs/`) and WordPress (`./php.ini`) are all in
+this category. Vaultwarden, Redis and Metabase deploy cleanly on the compose
+route.
+
+**Every template also declares install scripts** (`preInstallCommand`,
+`postInstallCommand`) that the compose route cannot run, and what they do
+cannot be read from outside Elestio. Most software does not need them -
+vaultwarden, redis and metabase were verified to deploy and run - so the CLI
+warns and continues rather than refusing. If the software comes up without its
+admin account or initial data, deploy it as a managed service instead.
 
 > **The git route is currently unavailable.** It needs
 > `POST /api/cicd/createRepoByTemplate`, which the Elestio API returns 404 for:
@@ -383,7 +394,8 @@ Metabase deploy cleanly on the compose route.
 | `elestio cicd pipeline-delete <vmID> <pipelineID> --force` | Delete pipeline |
 | `elestio cicd pipeline-resync <vmID> <pipelineID>` | Re-sync pipeline |
 | `elestio cicd pipeline-logs <vmID> <pipelineID>` | View pipeline logs |
-| `elestio cicd pipeline-history <vmID> <pipelineID>` | Build history |
+| `elestio cicd pipeline-history <vmID> <pipelineID>` | Build history, with each build's log file |
+| `elestio cicd pipeline-log <vmID> --pipeline <id> [--file <logID>]` | Open a build log (latest, or one from the history) |
 | `elestio cicd create --auto --target <vmID> --name X --repo owner/repo` | Pipeline from your own repo |
 | `elestio cicd create <config.json>` | Create from config file |
 | `elestio cicd template [mode]` | Generate config template |
@@ -488,7 +500,8 @@ you to supply all of that yourself.
 
 **The software starts, then exits, or the build fails.**
 Check the build log: `elestio cicd pipeline-history <vmID> <pipelineID>`, then
-`elestio cicd pipeline-log <vmID> --pipeline <id> --file <log>`. On the compose
+`elestio cicd pipeline-log <vmID> --pipeline <id> --file <logID>` (or without
+`--file` for the latest build). It answers a temporary URL tailing the log. On the compose
 route the usual causes are a repo file the compose mounts (the CLI refuses
 these upfront unless you passed `--force`) or a template that genuinely needs
 its lifecycle scripts. Both need the git route, which is currently

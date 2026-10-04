@@ -153,6 +153,31 @@ describe('password generators', () => {
 });
 
 describe('repoFileMounts', () => {
+  // Chromadb (441) quotes its mounts, so the guard never fired and the
+  // container failed with 'not a directory' once deployed.
+  it('detects quoted mounts', () => {
+    const compose = [
+      'services:', '  app:', '    volumes:',
+      '      - "./.env:/app/backend/.env"',
+      "      - './overrides/system.js:/app/backend/endpoints/system.js:ro'",
+      '      - "./data:/app/data"'
+    ].join('\n');
+    expect(repoFileMounts(compose)).toEqual(['./.env', './overrides/system.js']);
+  });
+
+  it('detects the long bind syntax', () => {
+    const compose = [
+      'services:', '  app:', '    volumes:',
+      '      - type: bind',
+      '        source: ./config/app.yml',
+      '        target: /etc/app.yml',
+      '      - type: bind',
+      '        source: "./state"',
+      '        target: /var/lib/state'
+    ].join('\n');
+    expect(repoFileMounts(compose)).toEqual(['./config/app.yml']);
+  });
+
   it('flags a bind-mounted repo file', () => {
     // n8n: this exact mount fails the build with runc's "not a directory"
     // because Docker creates the missing source as an empty directory.

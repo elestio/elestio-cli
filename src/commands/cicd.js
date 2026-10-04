@@ -169,16 +169,70 @@ export async function getPipelineHistory(vmID, pipelineID, projectId, json = fal
   return history;
 }
 
-export async function viewPipelineLog(vmID, pipelineID, filepath, projectId) {
+/**
+ * getCICDUserAuthAccount answers an object keyed by provider:
+ *   {data: {GITHUB: [{name, value, type}], GITLAB: [], GITLAB_SELF_HOSTED: []}}
+ * The auth ID is the account's `value`. Reading it as an array found nothing,
+ * so the git route reported no connected account even when there was one.
+ */
+export function parseGitAuthId(response, gitType) {
+  const data = response?.data ?? response ?? {};
+
+  const byProvider = data[gitType];
+  if (Array.isArray(byProvider) && byProvider.length > 0) {
+    const account = byProvider[0];
+    const id = account.value ?? account.id ?? account.authID;
+    return id === undefined || id === null ? null : String(id);
+  }
+
+  // Older shape: a flat list of accounts carrying their provider.
+  const flat = Array.isArray(data) ? data : (Array.isArray(data.accounts) ? data.accounts : null);
+  if (flat) {
+    const match = flat.find(a => (a.externalProviderName || a.gitType || a.type) === gitType);
+    if (match) {
+      const id = match.value ?? match.id ?? match.authID;
+      return id === undefined || id === null ? null : String(id);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * viewPipelineLog requires isLatest, and spells the file `filePath`. Sending
+ * `filepath` without isLatest was rejected as a missing parameter, so no build
+ * log could be read. The file name is the logID from pipeline-history; it is
+ * resolved inside the pipeline's own log directory, so a full path is trimmed.
+ */
+export function buildViewLogPayload(vmID, pipelineID, projectId, file = null) {
+  const payload = {
+    vmID: String(vmID),
+    projectID: String(projectId),
+    pipelineID: parseInt(pipelineID),
+    isLatest: !file
+  };
+  if (file) payload.filePath = String(file).slice(String(file).lastIndexOf('/') + 1);
+  return payload;
+}
+
+/**
+ * Opens a temporary web view tailing one build log, like the dashboard does.
+ * The endpoint answers a URL, not the log's content.
+ */
+export async function viewPipelineLog(vmID, pipelineID, filepath, projectId, json = false) {
   const config = loadConfig();
   const pid = projectId || config.defaultProject;
   if (!pid) throw new Error('Project ID required');
+  if (!pipelineID) throw new Error('Pipeline ID required (--pipeline <id>)');
 
-  const response = await apiRequest('/api/cicd/viewPipelineLog', 'POST', {
-    vmID: String(vmID), projectID: String(pid), pipelineID: parseInt(pipelineID), filepath
-  });
-  if (response.status !== 'OK') throw new Error(response.message || 'Failed');
-  console.log(response.data?.content || response.content || '');
+  const response = await apiRequest('/api/cicd/viewPipelineLog', 'POST', buildViewLogPayload(vmID, pipelineID, pid, filepath));
+  if (!response.url) throw new Error(response.message || response.details || 'Failed to open the build log');
+
+  if (json) { outputJson({ url: response.url }); return response; }
+
+  console.log(`\n${colors.bold}Build log${filepath ? ` (${filepath})` : ' (latest)'}${colors.reset}\n`);
+  console.log(`  URL: ${colors.cyan}${response.url}${colors.reset}`);
+  console.log(`\n  ${colors.dim}Temporary page tailing the log on the target.${colors.reset}\n`);
   return response;
 }
 
@@ -237,6 +291,14 @@ export async function createPipeline(configFile) {
 async function findGitAuthID(gitType, projectId) {
   const config = loadConfig();
   const pid = projectId || config.defaultProject;
+
+  // The connected accounts are the authoritative source; the scan below only
+  // covers accounts that are not listed but are in use by a pipeline.
+  try {
+    const accounts = await apiRequest('/api/cicd/getCICDUserAuthAccount', 'POST', {});
+    const authID = parseGitAuthId(accounts, gitType);
+    if (authID) return authID;
+  } catch { /* fall through to the scan */ }
 
   try {
     const cicdResp = await apiRequest('/api/cicd/getCICDServices', 'POST', { projectID: String(pid) });

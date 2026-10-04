@@ -4,6 +4,7 @@ import { log, colors, outputJson, formatTable } from '../utils.js';
 import { getTemplates } from './templates.js';
 import { createSubstitutions, normalizeElestioConfig, repoFileMounts } from '../templates/elestio-config.js';
 import { buildGitPipelinePayload, buildComposePipelinePayload } from '../payloads/pipeline.js';
+import { parseGitAuthId } from './cicd.js';
 import { TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
 
 /**
@@ -99,12 +100,9 @@ async function resolveCicdTarget(vmID, projectId) {
   };
 }
 
-async function findGitAuth(gitType, projectId) {
+async function findGitAuth(gitType) {
   const response = await apiRequest('/api/cicd/getCICDUserAuthAccount', 'POST', {});
-  const accounts = response.data?.accounts || response.data || response.accounts || [];
-  if (!Array.isArray(accounts)) return null;
-  const match = accounts.find(a => (a.externalProviderName || a.gitType) === gitType);
-  return match ? String(match.id || match.authID) : null;
+  return parseGitAuthId(response, gitType);
 }
 
 /**
@@ -242,7 +240,7 @@ export async function deployTemplate(nameOrId, options = {}) {
 async function buildGitRoute({ options, projectId, target, template, repoName, pipelineName, branch, elestioConfig }) {
   const gitType = (options.gitType || 'GITHUB').toUpperCase();
 
-  let authID = options.authId ? String(options.authId) : await findGitAuth(gitType, projectId);
+  let authID = options.authId ? String(options.authId) : await findGitAuth(gitType);
   if (!authID) {
     throw new Error(
       `No ${gitType} account connected. Connect one in the dashboard (CI/CD > Git accounts), pass --auth-id, ` +
@@ -298,9 +296,8 @@ async function buildComposeRoute({ projectId, target, repoName, pipelineName, br
     );
   }
 
-  if (hasLifecycleHooks(elestioConfig)) {
-    log('warn', `"${repoName}" defines lifecycle scripts that need a repo checkout; they are skipped on the compose route.`);
-  }
+  const hooks = installHooks(elestioConfig);
+  if (hooks.length > 0) log('warn', lifecycleWarning(repoName, hooks));
 
   return buildComposePipelinePayload({
     target, projectId, pipelineName, compose, elestioConfig
@@ -309,6 +306,25 @@ async function buildComposeRoute({ projectId, target, repoName, pipelineName, br
 
 function hasLifecycleHooks(elestioConfig) {
   return Object.values(elestioConfig.lifeCycleCommand).some(v => v && v !== '');
+}
+
+/**
+ * Install hooks live in the template repo, which the compose route never
+ * checks out, so they are skipped. Every catalog template declares them, and
+ * plenty deploy perfectly without them (vaultwarden, redis and metabase were
+ * verified live), so this reports rather than refuses: what the scripts
+ * actually do cannot be read, the repos are private to Elestio.
+ */
+export function installHooks(elestioConfig) {
+  return Object.entries(elestioConfig.lifeCycleCommand || {})
+    .filter(([name, value]) => value && value !== '' && /^(pre|post)Install/.test(name))
+    .map(([name, value]) => `${name}=${value}`);
+}
+
+export function lifecycleWarning(repoName, hooks) {
+  return `"${repoName}" declares install scripts the compose route cannot run (${hooks.join(', ')}). ` +
+    'Whatever they set up is skipped: an admin account, initial data or a sign-up lockdown may be missing. ' +
+    'Check the software once deployed; if it needs them, deploy it as a managed service instead.';
 }
 
 function collectOverrides(options) {

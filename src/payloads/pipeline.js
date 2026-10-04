@@ -1,4 +1,4 @@
-import { RUNTIME_PRESETS } from '../constants.js';
+import { RUNTIME_PRESETS, TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
 import { EMPTY_LIFECYCLE } from '../templates/elestio-config.js';
 
 /**
@@ -144,6 +144,55 @@ export function buildGitPipelinePayload({
     authID,
     isPublicGitRepo: !!isPublicGitRepo,
     isNeedToCreateRepo: !!isNeedToCreateRepo
+  });
+}
+
+/**
+ * Pipeline running catalog software from its own template repo.
+ *
+ * This is what the dashboard sends: `imageData.dockerExample` carries the
+ * elestio-examples URL, and the backend then stores it as the pipeline's
+ * gitConfig.repoURL (createCiCdExistServer). The deployment agent clones that
+ * repo on the VM with Elestio's own Git token, so the repo's files exist and
+ * its lifecycle scripts run -- without copying anything into the user's Git
+ * account, and without needing a connected Git account at all.
+ *
+ * The inline route below cannot do either, which is why half the catalogue
+ * (Kafka, Chromadb, Weaviate, ClickHouse, WordPress...) is undeployable
+ * through it.
+ */
+export function buildTemplateRepoPipelinePayload({
+  target, projectId, pipelineName, compose, repoName, branch = 'main', elestioConfig, overrides = {}
+}) {
+  if (!compose) throw new Error('A docker-compose file is required');
+  if (!repoName) throw new Error('A template repo name is required');
+  const fromFile = elestioConfig && elestioConfig.hasConfig ? elestioConfig : null;
+
+  return buildPipelinePayload({
+    target, projectId, pipelineName,
+    cicdMode: 'DockerCompose',
+    gitData: {},
+    imageData: {
+      isPrivate: false,
+      compose,
+      // The three fields that turn this into a cloned-repo pipeline.
+      dockerExample: `${TEMPLATE_REPO_HOST}/${TEMPLATE_REPO_OWNER}/${repoName}`,
+      branch,
+      repoName
+    },
+    configData: {
+      runTime: 'NodeJs', framework: 'NoFramework', version: '20',
+      buildDir: '/', rootDir: '/', buildCmd: '', runCmd: '', installCmd: ''
+    },
+    ports: overrides.ports || fromFile?.ports,
+    exposedPorts: overrides.exposedPorts || fromFile?.exposedPorts,
+    variables: overrides.variables ?? fromFile?.variables ?? '',
+    // Kept, unlike the inline route: the repo is checked out, so they can run.
+    lifeCycleCommand: fromFile?.lifeCycleCommand,
+    copyCommandConfig: fromFile?.copyCommandConfig || [],
+    authID: null,
+    isPublicGitRepo: false,
+    isNeedToCreateRepo: false
   });
 }
 

@@ -632,6 +632,7 @@ export const registry = {
             owner: args.owner, branch: args.branch, repoName: args['repo-name'],
             gitType: args['git-type'], authId: args['auth-id'],
             git: !args['no-git'] && (args.git === true || args.git === 'true' || !!args.owner),
+            inlineCompose: !!args['inline-compose'],
             private: !!args.private, nonOrg: !!args['non-org'],
             buildCmd: args['build-cmd'], runCmd: args['run-cmd'],
             installCmd: args['install-cmd'], buildDir: args['build-dir'],

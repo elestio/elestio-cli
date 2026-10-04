@@ -345,17 +345,24 @@ written as `random_password` are generated, `[EMAIL]` becomes your account
 email, and `[CI_CD_DOMAIN]` is resolved by the platform once the pipeline has a
 domain.
 
-**Two routes:**
+**Three routes. The default needs nothing from you:**
 
-| | compose (default) | git (`--owner <git-user>`) |
-|---|---|---|
-| What it does | Inlines the template's `docker-compose.yml` | Generates the template repo into your Git account, then builds from it |
-| Needs a Git account | No | Yes, connected in the dashboard |
-| Lifecycle scripts | Skipped | Run |
-| Repo files the compose mounts | Unavailable | Available |
-| Works for | Templates that need no files from the repo | Every template |
+| | repo (default) | inline (`--inline-compose`) | git (`--owner <git-user>`) |
+|---|---|---|---|
+| What it does | Points the pipeline at the `elestio-examples` repo, which Elestio clones on the VM | Inlines the template's `docker-compose.yml` only | Generates the template repo into your Git account, then builds from it |
+| Needs a Git account | No | No | Yes, connected in the dashboard |
+| Install scripts | **Run** | Skipped | Run |
+| Files the compose mounts or reads | **Present** | Missing | Present |
+| Works for | The whole catalogue | Templates that need no file from the repo | Every template |
 
-The compose route has no checkout and runs no install script, so a template
+The default route sends `imageData.dockerExample` (the template repo URL),
+`branch` and `repoName`. The backend stores them as the pipeline's
+`gitConfig.repoURL`, and the deployment agent clones that repo with Elestio's
+own Git token - the same thing the dashboard does. Nothing is copied into your
+account, and no Git account is needed.
+
+`--inline-compose` sends only the compose file, which is what you want for a
+compose of your own. That route has no checkout and runs no install script, so a template
 whose `docker-compose.yml` bind-mounts a file cannot work: Docker creates the
 missing source as an empty directory and the container fails to start. The file
 may ship in the template repo (n8n's `./n8n-task-runners.json`) or be generated

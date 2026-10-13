@@ -249,7 +249,7 @@ replica.
 | `elestio backups remote-list <vmID>` | List remote backups |
 | `elestio backups remote-take <vmID>` | Take remote backup |
 | `elestio backups remote-restore <vmID> <snapshot>` | Restore remote backup |
-| `elestio backups auto-enable <vmID>` | Setup auto backups |
+| `elestio backups auto-enable <vmID> [--path /opt] [--hour 03:00]` | Setup auto backups of a directory on the VM (default `/opt`) |
 | `elestio backups auto-disable <vmID>` | Disable auto backups |
 
 ### Snapshots

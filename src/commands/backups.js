@@ -83,8 +83,13 @@ export async function restoreRemoteBackup(vmID, snapshotName) {
   return response;
 }
 
-export async function setupAutoBackups(vmID, backupPath = '/backup/', backupHour = '03:00') {
-  log('info', `Setting up auto backups for ${vmID}...`);
+// Directory the backend hands to `borg create` on the VM. It must exist there,
+// or every archive is empty. /opt holds the app stack; the dashboard sends it.
+export const DEFAULT_BACKUP_PATH = '/opt';
+
+export async function setupAutoBackups(vmID, backupPath = DEFAULT_BACKUP_PATH, backupHour = '03:00') {
+  if (!backupPath.startsWith('/')) throw new Error(`Backup path must be absolute, got "${backupPath}"`);
+  log('info', `Setting up auto backups for ${vmID} (${backupPath})...`);
   const response = await apiRequest('/api/backups/SetupAutoBackups', 'POST', { serverID: String(vmID), backupPath, backupHour });
   if (response.status !== 'OK') throw new Error(response.message || 'Failed to setup');
   log('success', `Auto backups configured at ${backupHour}`);

@@ -504,7 +504,7 @@ export const registry = {
       'remote-list': { summary: 'List remote backups', usage: 'remote-list <vmID>', async run({ args, json }) { await (await load.backups()).listRemoteBackups(requireArg(args._[2], 'backups remote-list <vmID>'), json); } },
       'remote-take': { summary: 'Take a remote backup', usage: 'remote-take <vmID>', async run({ args }) { await (await load.backups()).takeRemoteBackup(requireArg(args._[2], 'backups remote-take <vmID>')); } },
       'remote-restore': { summary: 'Restore a remote backup', usage: 'remote-restore <vmID> <snapshot>', async run({ args }) { await (await load.backups()).restoreRemoteBackup(requireArg(args._[2], 'backups remote-restore <vmID> <snapshot>'), positional(args, 3, 'snapshot')); } },
-      'auto-enable': { summary: 'Enable scheduled backups (--path, --hour)', usage: 'auto-enable <vmID>', async run({ args }) { await (await load.backups()).setupAutoBackups(requireArg(args._[2], 'backups auto-enable <vmID>'), args.path, args.hour); } },
+      'auto-enable': { summary: 'Enable scheduled backups (--path dir on the VM, default /opt; --hour)', usage: 'auto-enable <vmID>', async run({ args }) { await (await load.backups()).setupAutoBackups(requireArg(args._[2], 'backups auto-enable <vmID>'), args.path, args.hour); } },
       'auto-disable': { summary: 'Disable scheduled backups', usage: 'auto-disable <vmID>', async run({ args }) { await (await load.backups()).disableAutoBackups(requireArg(args._[2], 'backups auto-disable <vmID>')); } }
     }
   },

@@ -2,7 +2,8 @@
 // (helper/constant.js, helper/ovh/index.js, api/volumes/createVolume.js).
 
 // OVH launch offer: getServerSizes returns the list price, the backend bills
-// half of it on OVH VMs until this date.
+// half of it on every OVH resource (services, load balancers, volumes; not
+// support plans) until this date.
 export const OVH_LAUNCH_DISCOUNT = 0.5;
 export const OVH_LAUNCH_OFFER_END = new Date('2027-01-01T00:00:00Z');
 export const OVH_LAUNCH_OFFER_LABEL = 'OVH launch offer: 50% off until Jan 1, 2027';
@@ -86,7 +87,7 @@ export function volumePricePerMonth(provider, type, sizeGB, now = new Date()) {
   const size = parseInt(sizeGB, 10) || 0;
   if (p === 'ovh') {
     const rate = type === 'HDD' ? VOLUME_PRICE.ovhHdd : VOLUME_PRICE.ovhNvme;
-    // The backend applies the launch discount to OVH volumes too.
+    // The launch offer covers OVH volumes too (confirmed by the backend team).
     return size * applyLaunchDiscount('ovh', rate, now);
   }
   if (p === 'hetzner') return size * VOLUME_PRICE.hetzner;

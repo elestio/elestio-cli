@@ -118,11 +118,13 @@ elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G --dry-run
 - Common regions: `DE1` (Frankfurt), `GRA11` (Gravelines), `SBG5` (Strasbourg),
   `UK1` (London), `BHS5` (Canada), `SGP1` (Singapore), `SYD1` (Sydney). Local
   Zones (`*-LZ-*`) offer fewer sizes.
-- Launch offer: 50% off OVH VMs until Jan 1, 2027. `sizes` and `deploy --dry-run`
-  show the discounted price (`listPricePerHour` keeps the list price in `--json`).
+- Launch offer: 50% off every OVH resource until Jan 1, 2027 (services, CI/CD
+  targets, load balancers and volumes; support plans are not discounted). `sizes`, `deploy --dry-run` and `volumes create` show the
+  discounted price (`listPricePerHour` keeps the list price in `--json`).
 - Bandwidth is unlimited.
-- Volumes: `--type NVME` (default) or `--type HDD` (classic). HDD does not exist
-  in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).
+- Volumes: `--type NVME` (high speed, $0.25/GB/month, $0.125 during the offer,
+  default) or `--type HDD` (classic, $0.15/GB/month, $0.075 during the offer).
+  HDD does not exist in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).
 - Resize works both ways, but never to a plan with a smaller disk.
 - No provider-level snapshots: use `elestio backups`.
 

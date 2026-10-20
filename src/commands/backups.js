@@ -75,7 +75,7 @@ export async function takeRemoteBackup(vmID) {
 }
 
 export async function restoreRemoteBackup(vmID, snapshotName) {
-  if (!snapshotName) throw new Error('Snapshot name required');
+  if (!snapshotName) throw new Error('Backup name required (from: elestio backups remote-list)');
   log('info', `Restoring remote backup ${snapshotName}...`);
   const response = await apiRequest('/api/backups/RestoreBackup', 'POST', { serverID: String(vmID), snapshotName });
   if (response.status !== 'OK') throw new Error(response.message || 'Failed to restore');
@@ -102,57 +102,6 @@ export async function disableAutoBackups(vmID) {
   if (response.status !== 'OK') throw new Error(response.message || 'Failed to disable');
   log('success', 'Auto backups disabled');
   return response;
-}
-
-// ── Snapshots ──
-
-export async function listSnapshots(vmID, json = false) {
-  const result = await doAction(vmID, 'listSnapshot');
-  const snapshots = result.data?.snapshots || result.snapshots || [];
-  if (json) { outputJson(snapshots); return snapshots; }
-  if (snapshots.length === 0) { log('info', 'No snapshots found'); return []; }
-
-  console.log(`\n${colors.bold}Snapshots${colors.reset}\n`);
-  snapshots.forEach(s => console.log(`  ${s.id || s.orderID || 'N/A'}: ${s.description || s.name || s.id || s} ${s.created ? `(${s.created})` : ''}`));
-  console.log('');
-  return snapshots;
-}
-
-export async function takeSnapshot(vmID) {
-  log('info', `Taking snapshot of ${vmID}...`);
-  const result = await doAction(vmID, 'takeSnapshot');
-  log('success', 'Snapshot initiated');
-  return result;
-}
-
-export async function restoreSnapshot(vmID, snapshotOrderID) {
-  if (snapshotOrderID === undefined) throw new Error('Snapshot order ID required (0 = most recent)');
-  log('info', `Restoring snapshot ${snapshotOrderID}...`);
-  const result = await doAction(vmID, 'restoreSnapshot', { snapshotOrderID: String(snapshotOrderID) });
-  log('success', 'Snapshot restore initiated');
-  return result;
-}
-
-export async function deleteSnapshot(vmID, snapshotID) {
-  if (!snapshotID) throw new Error('Snapshot ID required');
-  log('info', `Deleting snapshot ${snapshotID}...`);
-  const result = await doAction(vmID, 'deleteSnapshot', { snapshotID: String(snapshotID) });
-  log('success', 'Snapshot deleted');
-  return result;
-}
-
-export async function enableAutoSnapshots(vmID) {
-  log('info', `Enabling auto snapshots on ${vmID}...`);
-  const result = await doAction(vmID, 'enableBackup');
-  log('success', 'Auto snapshots enabled');
-  return result;
-}
-
-export async function disableAutoSnapshots(vmID) {
-  log('info', `Disabling auto snapshots on ${vmID}...`);
-  const result = await doAction(vmID, 'disableBackup');
-  log('success', 'Auto snapshots disabled');
-  return result;
 }
 
 // ── S3 External Backups ──

@@ -495,10 +495,10 @@ export const registry = {
     }
   },
 
-  // ── Backups & Snapshots ──
+  // ── Backups ──
 
   backups: {
-    group: 'Backups & Snapshots',
+    group: 'Backups',
     summary: 'Manage local and remote backups',
     actions: {
       'local-list': { summary: 'List local backups', usage: 'local-list <vmID>', async run({ args, json }) { await (await load.backups()).listLocalBackups(requireArg(args._[2], 'backups local-list <vmID>'), json); } },
@@ -507,27 +507,14 @@ export const registry = {
       'local-delete': { summary: 'Delete a local backup', usage: 'local-delete <vmID> <path>', async run({ args }) { await (await load.backups()).deleteLocalBackup(requireArg(args._[2], 'backups local-delete <vmID> <path>'), positional(args, 3, 'path')); } },
       'remote-list': { summary: 'List remote backups', usage: 'remote-list <vmID>', async run({ args, json }) { await (await load.backups()).listRemoteBackups(requireArg(args._[2], 'backups remote-list <vmID>'), json); } },
       'remote-take': { summary: 'Take a remote backup', usage: 'remote-take <vmID>', async run({ args }) { await (await load.backups()).takeRemoteBackup(requireArg(args._[2], 'backups remote-take <vmID>')); } },
-      'remote-restore': { summary: 'Restore a remote backup', usage: 'remote-restore <vmID> <snapshot>', async run({ args }) { await (await load.backups()).restoreRemoteBackup(requireArg(args._[2], 'backups remote-restore <vmID> <snapshot>'), positional(args, 3, 'snapshot')); } },
+      'remote-restore': { summary: 'Restore a remote backup (name from remote-list)', usage: 'remote-restore <vmID> <backupName>', async run({ args }) { await (await load.backups()).restoreRemoteBackup(requireArg(args._[2], 'backups remote-restore <vmID> <backupName>'), positional(args, 3, 'snapshot')); } },
       'auto-enable': { summary: 'Enable scheduled backups (--path dir on the VM, default /opt; --hour)', usage: 'auto-enable <vmID>', async run({ args }) { await (await load.backups()).setupAutoBackups(requireArg(args._[2], 'backups auto-enable <vmID>'), args.path, args.hour); } },
       'auto-disable': { summary: 'Disable scheduled backups', usage: 'auto-disable <vmID>', async run({ args }) { await (await load.backups()).disableAutoBackups(requireArg(args._[2], 'backups auto-disable <vmID>')); } }
     }
   },
 
-  snapshots: {
-    group: 'Backups & Snapshots',
-    summary: 'Manage provider-level VM snapshots',
-    actions: {
-      list: { summary: 'List snapshots', usage: 'list <vmID>', async run({ args, json }) { await (await load.backups()).listSnapshots(requireArg(args._[2], 'snapshots list <vmID>'), json); } },
-      take: { summary: 'Take a snapshot', usage: 'take <vmID>', async run({ args }) { await (await load.backups()).takeSnapshot(requireArg(args._[2], 'snapshots take <vmID>')); } },
-      restore: { summary: 'Restore a snapshot (0 = most recent)', usage: 'restore <vmID> <orderID>', async run({ args }) { await (await load.backups()).restoreSnapshot(requireArg(args._[2], 'snapshots restore <vmID> <orderID>'), positional(args, 3, 'order')); } },
-      delete: { summary: 'Delete a snapshot', usage: 'delete <vmID> <snapshotID>', async run({ args }) { await (await load.backups()).deleteSnapshot(requireArg(args._[2], 'snapshots delete <vmID> <snapshotID>'), positional(args, 3, 'id')); } },
-      'auto-enable': { summary: 'Enable automatic snapshots', usage: 'auto-enable <vmID>', async run({ args }) { await (await load.backups()).enableAutoSnapshots(requireArg(args._[2], 'snapshots auto-enable <vmID>')); } },
-      'auto-disable': { summary: 'Disable automatic snapshots', usage: 'auto-disable <vmID>', async run({ args }) { await (await load.backups()).disableAutoSnapshots(requireArg(args._[2], 'snapshots auto-disable <vmID>')); } }
-    }
-  },
-
   's3-backup': {
-    group: 'Backups & Snapshots',
+    group: 'Backups',
     summary: 'Manage backups to an external S3 bucket',
     flags: [
       { name: '--key <id>', summary: 'S3 access key' },

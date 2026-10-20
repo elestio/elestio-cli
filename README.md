@@ -128,7 +128,6 @@ elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G --dry-run
   default) or `--type HDD` (classic, $0.15/GB/month, $0.075 during the offer).
   HDD does not exist in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).
 - Resize works both ways, but never to a plan with a smaller disk.
-- No provider-level snapshots: use `elestio backups`.
 
 ### Clusters
 
@@ -275,20 +274,9 @@ replica.
 | `elestio backups local-delete <vmID> <path>` | Delete local backup |
 | `elestio backups remote-list <vmID>` | List remote backups |
 | `elestio backups remote-take <vmID>` | Take remote backup |
-| `elestio backups remote-restore <vmID> <snapshot>` | Restore remote backup |
+| `elestio backups remote-restore <vmID> <backupName>` | Restore remote backup (name from `remote-list`) |
 | `elestio backups auto-enable <vmID> [--path /opt] [--hour 03:00]` | Setup auto backups of a directory on the VM (default `/opt`) |
 | `elestio backups auto-disable <vmID>` | Disable auto backups |
-
-### Snapshots
-
-| Command | Description |
-|---------|-------------|
-| `elestio snapshots list <vmID>` | List snapshots |
-| `elestio snapshots take <vmID>` | Take a snapshot |
-| `elestio snapshots restore <vmID> <orderID>` | Restore (0 = most recent) |
-| `elestio snapshots delete <vmID> <snapshotID>` | Delete a snapshot |
-| `elestio snapshots auto-enable <vmID>` | Enable auto snapshots |
-| `elestio snapshots auto-disable <vmID>` | Disable auto snapshots |
 
 ### S3 External Backups
 

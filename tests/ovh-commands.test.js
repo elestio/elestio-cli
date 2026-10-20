@@ -38,6 +38,16 @@ describe('volumes create on OVH', () => {
       .rejects.toThrow(/HDD.*NVME/);
   });
 
+  it('never sends a region from another provider', async () => {
+    await createVolume({ name: 'data', size: 20, provider: 'ovh' });
+    expect(apiRequest.mock.calls[0][2]).toMatchObject({ providerName: 'ovh', datacenter: 'DE1' });
+  });
+
+  it('asks for a region on a provider with no default', async () => {
+    await expect(createVolume({ name: 'data', size: 20, provider: 'vultr' })).rejects.toThrow(/--region is required for vultr/);
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
   it('normalizes the type on service-create too', async () => {
     await createServiceVolume('900', { name: 'data', size: 50, storageType: 'nvme' });
     expect(apiRequest.mock.calls[0][2]).toMatchObject({ action: 'createServiceVolume', blockStorageType: 'NVME' });

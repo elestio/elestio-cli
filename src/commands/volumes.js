@@ -2,7 +2,7 @@ import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { doAction } from './actions.js';
 import { log, colors, formatTable, outputJson } from '../utils.js';
-import { normalizeVolumeType, volumeTypeError, volumePricePerMonth, isLaunchOfferActive, OVH_LAUNCH_OFFER_LABEL } from '../providers.js';
+import { resolveRegion, normalizeVolumeType, volumeTypeError, volumePricePerMonth, isLaunchOfferActive, OVH_LAUNCH_OFFER_LABEL } from '../providers.js';
 
 export async function listVolumes(projectId = null, json = false) {
   const config = loadConfig();
@@ -43,11 +43,12 @@ export async function listVolumes(projectId = null, json = false) {
 
 export async function createVolume(options = {}) {
   const config = loadConfig();
-  const { name, size = 10, provider = config.defaults?.provider || 'hetzner', datacenter = config.defaults?.datacenter || 'fsn1', projectId = config.defaultProject, serverId = null } = options;
+  const { name, size = 10, provider = config.defaults?.provider || 'netcup', projectId = config.defaultProject, serverId = null } = options;
 
   if (!name) throw new Error('Volume name required');
   if (!projectId) throw new Error('Project ID required');
 
+  const datacenter = resolveRegion(provider, options.datacenter, { provider: 'netcup', datacenter: 'nbg', ...config.defaults });
   const storageType = normalizeVolumeType(options.storageType);
   const typeError = volumeTypeError(provider, storageType, datacenter);
   if (typeError) throw new Error(typeError);

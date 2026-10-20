@@ -122,6 +122,8 @@ elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G --dry-run
   targets, load balancers and volumes; support plans are not discounted). `sizes`, `deploy --dry-run` and `volumes create` show the
   discounted price (`listPricePerHour` keeps the list price in `--json`).
 - Bandwidth is unlimited.
+- The public IPv4 and the IPv6 are static: they stay the same for the life of
+  the service, resizes included.
 - Volumes: `--type NVME` (high speed, $0.25/GB/month, $0.125 during the offer,
   default) or `--type HDD` (classic, $0.15/GB/month, $0.075 during the offer).
   HDD does not exist in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).

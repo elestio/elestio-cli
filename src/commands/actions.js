@@ -3,6 +3,7 @@ import { loadConfig } from '../config.js';
 import { log, colors, formatTable, outputJson } from '../utils.js';
 import { getServiceDetails } from './services.js';
 import { filterSizes } from './templates.js';
+import { DOWNGRADE_SUPPORTED_PROVIDERS, canDowngrade, cannotShrinkDisk, diskShrinkError } from '../providers.js';
 import dns from 'dns/promises';
 
 export async function doAction(vmID, action, additionalParams = {}) {
@@ -343,8 +344,6 @@ export async function disableAlerts(vmID) {
 
 // ── Resize ──
 
-const DOWNGRADE_SUPPORTED_PROVIDERS = ['netcup', 'aws', 'azure', 'scaleway'];
-
 function parseSizeSpec(sizeName) {
   const cpuMatch = sizeName.match(/(\d+)C/i);
   const ramMatch = sizeName.match(/(\d+)G/i);
@@ -394,6 +393,16 @@ async function validateSizeForProvider(newType, providerName, region, currentTyp
   throw new Error(`Size "${newType}" not available for ${providerName}/${region}. Available: ${sizeList}`);
 }
 
+// OVH accepts any plan whose disk is at least the current one, so the disk is
+// checked on every change, not only when CPU or RAM go down.
+async function diskShrinkCheck(providerName, region, currentType, newType, currentDiskGB) {
+  if (!cannotShrinkDisk(providerName)) return null;
+  const sizes = await filterSizes(providerName);
+  const find = (title) => sizes.find(s => s.title?.toLowerCase() === title?.toLowerCase() && s.regionID?.toLowerCase() === region?.toLowerCase())
+    || sizes.find(s => s.title?.toLowerCase() === title?.toLowerCase());
+  return diskShrinkError(providerName, currentDiskGB || find(currentType)?.storageSizeGB, find(newType)?.storageSizeGB);
+}
+
 export async function resizeServer(vmID, newType, options = {}) {
   if (!newType) throw new Error('New server type required (e.g., LARGE-4C-8G)');
 
@@ -410,8 +419,11 @@ export async function resizeServer(vmID, newType, options = {}) {
     return;
   }
 
+  const shrink = await diskShrinkCheck(providerName, region, currentType, validatedType, service.storageSizeGB);
+  if (shrink) throw new Error(shrink);
+
   if (isDowngrade(currentType, validatedType)) {
-    if (!DOWNGRADE_SUPPORTED_PROVIDERS.includes(providerName.toLowerCase())) {
+    if (!canDowngrade(providerName)) {
       throw new Error(`Downgrade not supported on ${providerName}. Supported: ${DOWNGRADE_SUPPORTED_PROVIDERS.join(', ')}`);
     }
     log('warn', `Downgrade detected (${currentType} -> ${validatedType})`);

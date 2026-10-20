@@ -64,6 +64,7 @@ support. See [CI/CD](#cicd) for the pipeline route.
 | `elestio categories` | List template categories |
 | `elestio sizes` | List server sizes and pricing |
 | `elestio sizes --provider hetzner` | Filter by provider |
+| `elestio sizes --provider ovh` | OVHcloud sizes, 35 regions (prices include the launch offer) |
 
 ### Projects
 
@@ -102,6 +103,31 @@ elestio deploy PostgreSQL \
   --version 16 \
   --support level1
 ```
+
+Without `--region`, the CLI uses your configured region for your configured
+provider, `nbg` for netcup and `DE1` (Frankfurt) for OVH. Any other provider
+needs `--region`; `elestio sizes --provider <name>` lists them.
+
+#### OVHcloud
+
+```bash
+elestio sizes --provider ovh
+elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G --dry-run
+```
+
+- Common regions: `DE1` (Frankfurt), `GRA11` (Gravelines), `SBG5` (Strasbourg),
+  `UK1` (London), `BHS5` (Canada), `SGP1` (Singapore), `SYD1` (Sydney). Local
+  Zones (`*-LZ-*`) offer fewer sizes.
+- Launch offer: 50% off every OVH resource until Jan 1, 2027 (services, CI/CD
+  targets, load balancers and volumes; support plans are not discounted). `sizes`, `deploy --dry-run` and `volumes create` show the
+  discounted price (`listPricePerHour` keeps the list price in `--json`).
+- Bandwidth is unlimited.
+- The public IPv4 and the IPv6 are static: they stay the same for the life of
+  the service, resizes included.
+- Volumes: `--type NVME` (high speed, $0.25/GB/month, $0.125 during the offer,
+  default) or `--type HDD` (classic, $0.15/GB/month, $0.075 during the offer).
+  HDD does not exist in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).
+- Resize works both ways, but never to a plan with a smaller disk.
 
 ### Clusters
 
@@ -191,7 +217,7 @@ replica.
 | `elestio restart-stack <vmID>` | Restart Docker stack |
 | `elestio lock <vmID>` | Enable termination protection |
 | `elestio unlock <vmID>` | Disable termination protection |
-| `elestio resize <vmID> --size LARGE-4C-8G` | Resize a VM |
+| `elestio resize <vmID> --size LARGE-4C-8G` | Resize a VM (downgrades on netcup, AWS, Azure, Scaleway and OVH; OVH never shrinks the disk) |
 | `elestio change-version <vmID> <version>` | Change software version |
 
 ### Firewall
@@ -248,20 +274,9 @@ replica.
 | `elestio backups local-delete <vmID> <path>` | Delete local backup |
 | `elestio backups remote-list <vmID>` | List remote backups |
 | `elestio backups remote-take <vmID>` | Take remote backup |
-| `elestio backups remote-restore <vmID> <snapshot>` | Restore remote backup |
+| `elestio backups remote-restore <vmID> <backupName>` | Restore remote backup (name from `remote-list`) |
 | `elestio backups auto-enable <vmID> [--path /opt] [--hour 03:00]` | Setup auto backups of a directory on the VM (default `/opt`) |
 | `elestio backups auto-disable <vmID>` | Disable auto backups |
-
-### Snapshots
-
-| Command | Description |
-|---------|-------------|
-| `elestio snapshots list <vmID>` | List snapshots |
-| `elestio snapshots take <vmID>` | Take a snapshot |
-| `elestio snapshots restore <vmID> <orderID>` | Restore (0 = most recent) |
-| `elestio snapshots delete <vmID> <snapshotID>` | Delete a snapshot |
-| `elestio snapshots auto-enable <vmID>` | Enable auto snapshots |
-| `elestio snapshots auto-disable <vmID>` | Disable auto snapshots |
 
 ### S3 External Backups
 
@@ -294,7 +309,7 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | Command | Description |
 |---------|-------------|
 | `elestio volumes` | List project volumes |
-| `elestio volumes create --name X --size 10` | Create a volume |
+| `elestio volumes create --name X --size 10 [--type NVME\|HDD]` | Create a volume |
 | `elestio volumes service-list <vmID>` | List attached volumes |
 | `elestio volumes service-create <vmID> --name X` | Create & attach volume |
 | `elestio volumes resize <vmID> <volumeID> --size 50` | Resize a volume |

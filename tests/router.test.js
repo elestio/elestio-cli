@@ -41,11 +41,19 @@ describe('registry integrity', () => {
       'projects', 'services', 'service', 'deploy', 'delete-service', 'move-service',
       'wait', 'reboot', 'reset', 'shutdown', 'poweroff', 'poweron', 'restart-stack',
       'lock', 'unlock', 'resize', 'change-version', 'firewall', 'ssl', 'ssh-keys',
-      'updates', 'alerts', 'backups', 'snapshots', 's3-backup', 'credentials',
+      'updates', 'alerts', 'backups', 's3-backup', 'credentials',
       'ssh', 'vscode', 'files', 'volumes', 'cicd', 'billing'
     ];
     for (const name of shipped) {
       expect(registry[name], `${name} disappeared in the refactor`).toBeTruthy();
+    }
+  });
+
+  it('no longer offers VM snapshots: Elestio dropped them, backups replace them', async () => {
+    expect(registry.snapshots).toBeUndefined();
+    const backups = await import('../src/commands/backups.js');
+    for (const fn of ['listSnapshots', 'takeSnapshot', 'restoreSnapshot', 'deleteSnapshot', 'enableAutoSnapshots', 'disableAutoSnapshots']) {
+      expect(backups[fn], fn).toBeUndefined();
     }
   });
 

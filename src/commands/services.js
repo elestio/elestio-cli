@@ -1,9 +1,10 @@
 import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
-import { findTemplate } from './templates.js';
+import { findTemplate, validateCombo } from './templates.js';
 import { formatTable, formatService, colors, log, sleep, validateServerName, outputJson } from '../utils.js';
 import { buildCreateServerPayload, validateClusterOptions, describeCluster } from '../payloads/server.js';
 import { parseVmIDs, deploymentProgress } from '../deployment.js';
+import { resolveRegion, applyLaunchDiscount, isLaunchOfferActive, OVH_LAUNCH_OFFER_LABEL } from '../providers.js';
 
 async function listProjectsRaw() {
   const response = await apiRequest('/api/projects/getList');
@@ -107,6 +108,17 @@ export async function getServerIdFromVmId(vmID, projectId = null) {
   return service.id;
 }
 
+// VM price for this provider/region/size, after the OVH launch discount.
+// Empty when the combination is not in the catalog.
+async function vmPricePreview(provider, datacenter, serverType) {
+  const size = await validateCombo(provider, datacenter, serverType);
+  if (!size) return {};
+  const price = { vmPricePerHour: applyLaunchDiscount(provider, size.pricePerHour).toFixed(4) };
+  return isLaunchOfferActive(provider)
+    ? { ...price, listPricePerHour: size.pricePerHour, launchOffer: OVH_LAUNCH_OFFER_LABEL }
+    : price;
+}
+
 export async function deployService(templateNameOrId, options = {}) {
   const config = loadConfig();
   const template = await findTemplate(templateNameOrId);
@@ -117,10 +129,10 @@ export async function deployService(templateNameOrId, options = {}) {
 
   const serverName = options.name || `${template.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36)}`;
   const serverType = options.size || config.defaults?.serverType || 'MEDIUM-2C-4G';
-  const datacenter = options.region || config.defaults?.datacenter || 'nbg';
   const support = options.support || config.defaults?.support || 'level1';
   const adminEmail = options.email || config.email;
   const provider = options.provider || config.defaults?.provider || 'netcup';
+  const datacenter = resolveRegion(provider, options.region, { provider: 'netcup', datacenter: 'nbg', ...config.defaults });
   const version = options.version || template.dockerhub_default_tag || 'latest';
 
   const nameValidation = validateServerName(serverName);
@@ -144,11 +156,13 @@ export async function deployService(templateNameOrId, options = {}) {
   });
 
   if (options.dryRun) {
+    const price = await vmPricePreview(provider, datacenter, serverType);
     const preview = {
       template: template.title, templateId: template.id, version,
       projectId, serverName, provider, datacenter, serverType, support, adminEmail, serviceType,
       cluster: cluster ? { mode: cluster.mode, nodes: cluster.nodes, isReplica: cluster.isReplica } : null,
-      topology: describeCluster(cluster)
+      topology: describeCluster(cluster),
+      ...price
     };
 
     if (options.json) {
@@ -164,6 +178,10 @@ export async function deployService(templateNameOrId, options = {}) {
     console.log(`  Provider:   ${provider}`);
     console.log(`  Region:     ${datacenter}`);
     console.log(`  Size:       ${serverType}`);
+    if (price.vmPricePerHour) {
+      const offer = price.launchOffer ? ` ${colors.green}(${price.launchOffer})${colors.reset}` : '';
+      console.log(`  VM price:   $${(Number(price.vmPricePerHour) * 24 * 30).toFixed(2)}/mo per VM, support plan not included${offer}`);
+    }
     console.log(`  Support:    ${support}`);
     console.log(`  Admin:      ${adminEmail}`);
     console.log(`  Topology:   ${describeCluster(cluster)}`);

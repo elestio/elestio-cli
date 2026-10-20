@@ -162,8 +162,11 @@ export const registry = {
 
   sizes: {
     group: 'Catalog',
-    summary: 'List server sizes and pricing',
+    summary: 'List server sizes and pricing (OVH prices include the launch offer)',
     usage: 'sizes [--provider <name>] [--country <code>]',
+    examples: [
+      { description: 'OVHcloud sizes and regions', command: 'elestio sizes --provider ovh' }
+    ],
     async run({ args, json }) { await (await load.templates()).listSizes(args.provider, args.country, json); }
   },
 
@@ -233,8 +236,8 @@ export const registry = {
     flags: [
       { name: '--name <name>', summary: 'Service name (generated when omitted)' },
       { name: '--size <type>', summary: 'Server size, e.g. MEDIUM-2C-4G' },
-      { name: '--region <code>', summary: 'Datacenter, e.g. nbg' },
-      { name: '--provider <name>', summary: 'Cloud provider, e.g. hetzner' },
+      { name: '--region <code>', summary: 'Datacenter, e.g. nbg (netcup), DE1 (ovh). Required for other providers' },
+      { name: '--provider <name>', summary: 'Cloud provider, e.g. netcup, hetzner, ovh' },
       { name: '--version <tag>', summary: 'Software version' },
       { name: '--cluster', summary: 'Deploy as a cluster instead of a single node' },
       { name: '--nodes <n>', summary: 'Total nodes, primary included (default: the template minimum)' },
@@ -248,7 +251,8 @@ export const registry = {
       { description: 'Single PostgreSQL node', command: 'elestio deploy postgresql --size MEDIUM-2C-4G' },
       { description: 'PostgreSQL with 2 replicas (3 VMs)', command: 'elestio deploy postgresql --cluster --nodes 3' },
       { description: 'MySQL multi-master', command: 'elestio deploy mysql --cluster --cluster-mode multi-master' },
-      { description: 'Check the plan and cost first', command: 'elestio deploy clickhouse --cluster --dry-run' }
+      { description: 'Check the plan and cost first', command: 'elestio deploy clickhouse --cluster --dry-run' },
+      { description: 'Redis on OVHcloud, Gravelines', command: 'elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G' }
     ],
     async run({ args, json }) {
       const { deployService } = await load.services();
@@ -413,7 +417,7 @@ export const registry = {
 
   resize: {
     group: 'Server Actions',
-    summary: 'Resize a VM',
+    summary: 'Resize a VM (downgrades: netcup, aws, azure, scaleway, ovh; OVH never shrinks the disk)',
     usage: 'resize <vmID> --size <serverType>',
     async run({ args }) {
       const { resizeServer } = await load.actions();
@@ -600,9 +604,9 @@ export const registry = {
     defaultAction: 'list',
     actions: {
       list: { summary: 'List volumes in the project', usage: 'list', async run({ args, json }) { await (await load.volumes()).listVolumes(args.project, json); } },
-      create: { summary: 'Create a standalone volume', usage: 'create --name <n> --size <gb>', async run({ args }) { await (await load.volumes()).createVolume({ name: args.name || args._[2], size: args.size ? parseInt(args.size) : undefined, provider: args.provider, datacenter: args.datacenter, projectId: args.project, serverId: args.server, storageType: args.type }); } },
+      create: { summary: 'Create a standalone volume (--type NVME|HDD; HDD on Vultr and OVH, not OVH Paris/Milan)', usage: 'create --name <n> --size <gb> [--type NVME|HDD]', async run({ args }) { await (await load.volumes()).createVolume({ name: args.name || args._[2], size: args.size ? parseInt(args.size) : undefined, provider: args.provider, datacenter: args.datacenter, projectId: args.project, serverId: args.server, storageType: args.type || args['storage-type'] }); } },
       'service-list': { summary: 'List volumes attached to a service', usage: 'service-list <vmID>', async run({ args, json }) { await (await load.volumes()).getServiceVolumes(requireArg(args._[2], 'volumes service-list <vmID>'), json); } },
-      'service-create': { summary: 'Create and attach a volume', usage: 'service-create <vmID> --name <n> --size <gb>', async run({ args }) { await (await load.volumes()).createServiceVolume(requireArg(args._[2], 'volumes service-create <vmID> --name <n>'), { name: args.name || args._[3], size: args.size ? parseInt(args.size) : undefined, storageType: args.type }); } },
+      'service-create': { summary: 'Create and attach a volume (--type NVME|HDD)', usage: 'service-create <vmID> --name <n> --size <gb> [--type NVME|HDD]', async run({ args }) { await (await load.volumes()).createServiceVolume(requireArg(args._[2], 'volumes service-create <vmID> --name <n>'), { name: args.name || args._[3], size: args.size ? parseInt(args.size) : undefined, storageType: args.type || args['storage-type'] }); } },
       resize: { summary: 'Resize a volume', usage: 'resize <vmID> <volumeID> --size <gb>', async run({ args }) { await (await load.volumes()).resizeVolume(requireArg(args._[2], 'volumes resize <vmID> <volumeID> --size <gb>'), positional(args, 3, 'volume'), parseInt(args.size || args._[4])); } },
       detach: { summary: 'Detach a volume (--keep false deletes it)', usage: 'detach <vmID> <volumeID>', async run({ args }) { await (await load.volumes()).detachVolume(requireArg(args._[2], 'volumes detach <vmID> <volumeID>'), positional(args, 3, 'volume'), { keepVolume: args.keep !== 'false' }); } },
       delete: { summary: 'Delete a volume', usage: 'delete <vmID> <volumeID>', async run({ args }) { await (await load.volumes()).deleteServiceVolume(requireArg(args._[2], 'volumes delete <vmID> <volumeID>'), positional(args, 3, 'volume')); } },

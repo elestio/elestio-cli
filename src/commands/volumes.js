@@ -2,6 +2,7 @@ import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { doAction } from './actions.js';
 import { log, colors, formatTable, outputJson } from '../utils.js';
+import { normalizeVolumeType, volumeTypeError, volumePricePerMonth, isLaunchOfferActive, OVH_LAUNCH_OFFER_LABEL } from '../providers.js';
 
 export async function listVolumes(projectId = null, json = false) {
   const config = loadConfig();
@@ -42,13 +43,19 @@ export async function listVolumes(projectId = null, json = false) {
 
 export async function createVolume(options = {}) {
   const config = loadConfig();
-  const { name, size = 10, provider = config.defaults?.provider || 'hetzner', datacenter = config.defaults?.datacenter || 'fsn1', projectId = config.defaultProject, serverId = null, storageType = 'NVME' } = options;
+  const { name, size = 10, provider = config.defaults?.provider || 'hetzner', datacenter = config.defaults?.datacenter || 'fsn1', projectId = config.defaultProject, serverId = null } = options;
 
   if (!name) throw new Error('Volume name required');
   if (!projectId) throw new Error('Project ID required');
 
-  const price = (size * 0.05).toFixed(2);
-  log('info', `Creating volume "${name}" (${size}GB ${storageType} @ ${provider}/${datacenter})...`);
+  const storageType = normalizeVolumeType(options.storageType);
+  const typeError = volumeTypeError(provider, storageType, datacenter);
+  if (typeError) throw new Error(typeError);
+
+  // The backend bills its own computation; this is the same one, for display.
+  const price = volumePricePerMonth(provider, storageType, size).toFixed(2);
+  const offer = isLaunchOfferActive(provider) ? ` (${OVH_LAUNCH_OFFER_LABEL})` : '';
+  log('info', `Creating volume "${name}" (${size}GB ${storageType} @ ${provider}/${datacenter}, ~$${price}/mo${offer})...`);
 
   const body = {
     projectID: String(projectId), providerName: provider, datacenter,
@@ -77,8 +84,10 @@ export async function getServiceVolumes(vmID, json = false) {
 }
 
 export async function createServiceVolume(vmID, options = {}) {
-  const { name, size = 10, storageType = 'NVME' } = options;
+  const { name, size = 10 } = options;
   if (!name) throw new Error('Volume name required');
+  const storageType = normalizeVolumeType(options.storageType);
+  if (!storageType) throw new Error(volumeTypeError(null, storageType));
 
   log('info', `Creating and attaching volume "${name}" to ${vmID}...`);
   const result = await doAction(vmID, 'createServiceVolume', { volumeName: name, volume: size, blockStorageType: storageType, isMoveData: false });

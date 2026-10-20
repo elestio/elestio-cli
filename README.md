@@ -64,6 +64,7 @@ support. See [CI/CD](#cicd) for the pipeline route.
 | `elestio categories` | List template categories |
 | `elestio sizes` | List server sizes and pricing |
 | `elestio sizes --provider hetzner` | Filter by provider |
+| `elestio sizes --provider ovh` | OVHcloud sizes, 35 regions (prices include the launch offer) |
 
 ### Projects
 
@@ -102,6 +103,28 @@ elestio deploy PostgreSQL \
   --version 16 \
   --support level1
 ```
+
+Without `--region`, the CLI uses your configured region for your configured
+provider, `nbg` for netcup and `DE1` (Frankfurt) for OVH. Any other provider
+needs `--region`; `elestio sizes --provider <name>` lists them.
+
+#### OVHcloud
+
+```bash
+elestio sizes --provider ovh
+elestio deploy redis --provider ovh --region GRA11 --size LARGE-2C-8G --dry-run
+```
+
+- Common regions: `DE1` (Frankfurt), `GRA11` (Gravelines), `SBG5` (Strasbourg),
+  `UK1` (London), `BHS5` (Canada), `SGP1` (Singapore), `SYD1` (Sydney). Local
+  Zones (`*-LZ-*`) offer fewer sizes.
+- Launch offer: 50% off OVH VMs until Jan 1, 2027. `sizes` and `deploy --dry-run`
+  show the discounted price (`listPricePerHour` keeps the list price in `--json`).
+- Bandwidth is unlimited.
+- Volumes: `--type NVME` (default) or `--type HDD` (classic). HDD does not exist
+  in `EU-WEST-PAR` (Paris) and `EU-SOUTH-MIL` (Milan).
+- Resize works both ways, but never to a plan with a smaller disk.
+- No provider-level snapshots: use `elestio backups`.
 
 ### Clusters
 
@@ -191,7 +214,7 @@ replica.
 | `elestio restart-stack <vmID>` | Restart Docker stack |
 | `elestio lock <vmID>` | Enable termination protection |
 | `elestio unlock <vmID>` | Disable termination protection |
-| `elestio resize <vmID> --size LARGE-4C-8G` | Resize a VM |
+| `elestio resize <vmID> --size LARGE-4C-8G` | Resize a VM (downgrades on netcup, AWS, Azure, Scaleway and OVH; OVH never shrinks the disk) |
 | `elestio change-version <vmID> <version>` | Change software version |
 
 ### Firewall
@@ -294,7 +317,7 @@ S3 options: `--key`, `--secret`, `--bucket`, `--endpoint`, `--prefix`
 | Command | Description |
 |---------|-------------|
 | `elestio volumes` | List project volumes |
-| `elestio volumes create --name X --size 10` | Create a volume |
+| `elestio volumes create --name X --size 10 [--type NVME\|HDD]` | Create a volume |
 | `elestio volumes service-list <vmID>` | List attached volumes |
 | `elestio volumes service-create <vmID> --name X` | Create & attach volume |
 | `elestio volumes resize <vmID> <volumeID> --size 50` | Resize a volume |

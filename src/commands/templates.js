@@ -1,5 +1,6 @@
 import { apiRequestNoAuth } from '../api.js';
 import { formatTable, colors, truncate, outputJson } from '../utils.js';
+import { applyLaunchDiscount, isLaunchOfferActive, isUnlimitedTraffic, OVH_LAUNCH_OFFER_LABEL } from '../providers.js';
 
 let templatesCache = null;
 let sizesCache = null;
@@ -116,21 +117,34 @@ export async function validateCombo(provider, datacenter, serverType) {
   );
 }
 
+function formatBandwidth(trafficGB) {
+  if (isUnlimitedTraffic(trafficGB)) return 'Unlimited';
+  return trafficGB == null ? null : `${trafficGB} GB`;
+}
+
 export async function listSizes(provider = null, country = null, json = false) {
   const sizes = await filterSizes(provider, country);
 
   if (json) {
-    outputJson(sizes.map(s => ({
-      provider: s.providerName,
-      region: s.regionID,
-      location: `${s.City}, ${s.CountryCode}`,
-      size: s.title,
-      cpu: s.vCPU,
-      ramGB: s.ramGB,
-      storageGB: s.storageSizeGB,
-      pricePerHour: s.pricePerHour,
-      priceMonthly: (parseFloat(s.pricePerHour) * 24 * 30).toFixed(0)
-    })));
+    outputJson(sizes.map(s => {
+      const price = applyLaunchDiscount(s.providerName, s.pricePerHour);
+      const offer = isLaunchOfferActive(s.providerName)
+        ? { listPricePerHour: s.pricePerHour, launchOffer: OVH_LAUNCH_OFFER_LABEL }
+        : {};
+      return {
+        provider: s.providerName,
+        region: s.regionID,
+        location: `${s.City}, ${s.CountryCode}`,
+        size: s.title,
+        cpu: s.vCPU,
+        ramGB: s.ramGB,
+        storageGB: s.storageSizeGB,
+        bandwidth: formatBandwidth(s.offerTrafficIncludedGB),
+        pricePerHour: price.toFixed(4),
+        priceMonthly: (price * 24 * 30).toFixed(0),
+        ...offer
+      };
+    }));
     return;
   }
 
@@ -162,9 +176,10 @@ export async function listSizes(provider = null, country = null, json = false) {
       vCPU: s.vCPU,
       ramGB: s.ramGB + 'GB',
       storage: s.storageSizeGB + 'GB ' + (s.storageType || ''),
-      price: '$' + (parseFloat(s.pricePerHour) * 24 * 30).toFixed(0)
+      price: '$' + (applyLaunchDiscount(s.providerName, s.pricePerHour) * 24 * 30).toFixed(0)
     }));
 
+    if (isLaunchOfferActive(providerName)) console.log(`  ${colors.green}${OVH_LAUNCH_OFFER_LABEL}, prices below include it${colors.reset}`);
     console.log(formatTable(data, columns));
     if (providerSizes.length > 20) {
       console.log(`  ... and ${providerSizes.length - 20} more`);

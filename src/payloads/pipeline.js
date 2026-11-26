@@ -1,5 +1,6 @@
 import { RUNTIME_PRESETS, TEMPLATE_REPO_OWNER, TEMPLATE_REPO_HOST } from '../constants.js';
 import { EMPTY_LIFECYCLE } from '../templates/elestio-config.js';
+import { gitApiRepoUrl, gitCloneUrl } from './gitRepo.js';
 
 /**
  * Builders for POST /api/cicd/createCiCdExistServer.
@@ -107,8 +108,13 @@ export function buildGitPipelinePayload({
   elestioConfig, authID, isPublicGitRepo, isNeedToCreateRepo, appType = 'static', overrides = {}
 }) {
   const preset = RUNTIME_PRESETS[appType] || RUNTIME_PRESETS.static;
-  const gitHost = gitType === 'GITLAB' ? 'gitlab.com' : 'github.com';
-  const repoName = repo.split('/')[1];
+  const repoName = repo.split('/').pop();
+  const hasRepoID = repoID !== undefined && repoID !== null && String(repoID) !== '';
+  // An existing repo without its id makes a pipeline that never receives pushes.
+  // A repo the backend is about to create gets its id there.
+  if (!hasRepoID && !isNeedToCreateRepo) {
+    throw new Error(`repoID is required for ${repo}: look the repository up with the Git connection first`);
+  }
   const fromFile = elestioConfig && elestioConfig.hasConfig ? elestioConfig : null;
 
   const configData = {
@@ -128,9 +134,10 @@ export function buildGitPipelinePayload({
     gitData: {
       projectName: pipelineName,
       branch,
-      repoUrl: `https://${gitHost}/${repo}`,
-      cloneUrl: `https://${gitHost}/${repo}.git`,
-      repoID: repoID === undefined || repoID === null ? '' : String(repoID),
+      // API URL: the backend creates the webhook through it (a web URL gets none)
+      repoUrl: gitApiRepoUrl(gitType, repo, hasRepoID ? { id: repoID } : null),
+      cloneUrl: gitCloneUrl(gitType, repo),
+      repoID: hasRepoID ? String(repoID) : '',
       repo: repoName,
       ...(isNeedToCreateRepo ? { createFromTemplate: true, gitTemplateName: repoName } : {})
     },

@@ -2,6 +2,7 @@ import { apiRequest } from '../api.js';
 import { loadConfig } from '../config.js';
 import { log, colors, formatTable, outputJson } from '../utils.js';
 import fs from 'fs';
+import { gitApiRepoUrl, gitCloneUrl, completeGitData } from '../payloads/gitRepo.js';
 
 // ── List / Details ──
 
@@ -270,10 +271,14 @@ export async function createPipeline(configFile) {
   if (!configFile || !fs.existsSync(configFile)) throw new Error(`Config file not found: ${configFile}`);
 
   const fileConfig = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  // A Git pipeline needs the provider API URL and the repo id, or it never
+  // receives pushes: both are checked, and looked up when the file has none.
+  const checkedConfig = await completeGitData(fileConfig, (gitType, authID, owner, name) =>
+    findRepo(gitType, fileConfig.projectID, authID, owner, name));
   // The backend runs variables.trim(), so it must be a string, never an array.
   const pipelineConfig = {
-    ...fileConfig,
-    variables: typeof fileConfig.variables === 'string' ? fileConfig.variables : ''
+    ...checkedConfig,
+    variables: typeof checkedConfig.variables === 'string' ? checkedConfig.variables : ''
   };
 
   log('info', 'Creating pipeline...');
@@ -287,6 +292,13 @@ export async function createPipeline(configFile) {
 }
 
 // ── Auto-create Pipeline ──
+
+/** The provider's own description of a repo, through the user's Git connection. */
+export async function findRepo(gitType, projectId, authID, owner, repoName) {
+  const repos = await apiRequest('/api/cicd/getRepoByOrg', 'POST', { projectID: String(projectId), gitType, authID: String(authID), orgName: owner, gitUser: owner });
+  const repoList = repos.data || repos || [];
+  return (Array.isArray(repoList) ? repoList : []).find(r => r.name?.toLowerCase() === repoName?.toLowerCase()) || null;
+}
 
 async function findGitAuthID(gitType, projectId) {
   const config = loadConfig();
@@ -382,23 +394,24 @@ export async function autoCreatePipeline(options = {}) {
     const orgs = orgsResp.data?.scopeUsers || [];
     if (orgs.length === 0) throw new Error(`No ${gitType} accounts found`);
 
-    const [owner, repoName] = options.repo.split('/');
-    const repos = await apiRequest('/api/cicd/getRepoByOrg', 'POST', { projectID: String(pid), gitType, authID: String(authID), orgName: owner, gitUser: owner });
-    const repoList = repos.data || repos || [];
-    repoData = (Array.isArray(repoList) ? repoList : []).find(r => r.name?.toLowerCase() === repoName?.toLowerCase());
+    const repoParts = options.repo.split('/');
+    const repoName = repoParts.pop();
+    const owner = repoParts.join('/');
+    repoData = await findRepo(gitType, pid, authID, owner, repoName);
     if (!repoData) throw new Error(`Repo "${repoName}" not found`);
+    if (repoData.id === undefined || repoData.id === null) throw new Error(`Repo "${repoName}" has no id in the provider answer`);
     log('success', `Repo: ${repoData.name}`);
   }
 
   const preset = RUNTIME_PRESETS[appType] || RUNTIME_PRESETS.static;
   const branch = options.branch || 'main';
-  const gitHost = gitType === 'GITLAB' ? 'gitlab.com' : 'github.com';
 
   const defaultCompose = `services:\n  nginx:\n    image: nginx:alpine\n    ports:\n      - "172.17.0.1:${preset.containerPort}:80"\n    volumes:\n      - ./html:/usr/share/nginx/html:ro`;
 
   const payload = {
     cluster: { isCluster: false, createNew: false, target },
-    gitData: gitType ? { projectName: options.name, branch, repoUrl: `https://${gitHost}/${options.repo}`, cloneUrl: `https://${gitHost}/${options.repo}.git`, repoID: String(repoData.id), repo: options.repo.split('/')[1] } : {},
+    // API URL + the provider's own id and name: the backend creates the webhook through the first and matches pushes on the others
+    gitData: gitType ? { projectName: options.name, branch, repoUrl: gitApiRepoUrl(gitType, options.repo, repoData), cloneUrl: gitCloneUrl(gitType, options.repo, repoData), repoID: String(repoData.id), repo: repoData.name || options.repo.split('/').pop() } : {},
     imageData: gitType
       ? { isPipelineTemplate: false }
       : { isPrivate: false, compose: options.compose || defaultCompose, dockerExample: '', repoName: 'CustomDocker' },
@@ -510,7 +523,7 @@ export function generatePipelineTemplate(mode = 'docker') {
       CICDMode: 'DockerCompose', projectID: 'REPLACE', pipelineName: 'REPLACE', isMovePipeline: false, authID: null
     },
     github: {
-      cluster: baseCluster(), gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: 'https://github.com/OWNER/REPO', cloneUrl: 'https://github.com/OWNER/REPO.git', repoID: 'REPLACE', repo: 'OWNER/REPO' },
+      cluster: baseCluster(), gitData: { projectName: 'REPLACE', branch: 'main', repoUrl: 'https://api.github.com/repos/OWNER/REPO', cloneUrl: 'https://github.com/OWNER/REPO.git', repoID: 'REPLACE', repo: 'REPO' },
       imageData: { isPipelineTemplate: false },
       configData: { buildDir: '/dist', rootDir: '/', runTime: 'staticSPA', version: '20', framework: 'Vite.js', buildCmd: 'npm run build', runCmd: '', installCmd: 'npm install' },
       ports: basePorts(), variables: '', isPublicGitRepo: false,

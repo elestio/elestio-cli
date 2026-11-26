@@ -125,12 +125,12 @@ export async function apiRequest(endpoint, method = 'POST', body = {}, retried =
   };
 
   if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-    options.body = JSON.stringify({ jwt, ...body });
+    options.body = JSON.stringify({ ...body, jwt });
   }
 
   // GET routes read parameters from the query string only (backend requirement).
   const url = method === 'GET'
-    ? `${BASE_URL}${endpoint}?${new URLSearchParams({ jwt, ...body })}`
+    ? `${BASE_URL}${endpoint}?${new URLSearchParams({ ...body, jwt })}`
     : `${BASE_URL}${endpoint}`;
 
   const response = await httpRequest(url, options);

@@ -169,6 +169,38 @@ export function truncate(str, maxLen = 30) {
 
 // ── JSON output helper ──
 
+/**
+ * `--json` prints whatever the API returned. Those objects carry secrets nobody
+ * asked for (the server token, a pipeline's environment values, cloud and S3
+ * credentials...), and a terminal is also a log file, a CI output or the
+ * context of an AI agent driving the CLI. They are masked unless the caller
+ * passes --show-secrets. Commands whose purpose is a credential (`credentials`,
+ * `ssh`...) print an explicit `password` field, which is not in this list.
+ */
+const SECRET_KEYS = new Set([
+  'token', 'apitoken', 'jwt', 'refreshtoken', 'resetpasswordtoken', 'passwordhash', 'code2fa',
+  'envvars', 's3credentials', 'deployprivatekey', 'webhooksecret',
+  'awsconfig', 'azureauth', 'tcloudauth'
+]);
+export const REDACTED = '[redacted, use --show-secrets]';
+
+let showSecrets = false;
+export function setShowSecrets(value) {
+  showSecrets = !!value;
+}
+
+export function redactSecrets(data) {
+  if (Array.isArray(data)) return data.map(redactSecrets);
+  if (data === null || typeof data !== 'object') return data;
+  const out = {};
+  for (const [key, value] of Object.entries(data)) {
+    const isSecret = SECRET_KEYS.has(key.toLowerCase());
+    const isEmpty = value === null || value === undefined || value === '' || value === '""' || value === '{}' || value === '[]';
+    out[key] = isSecret && !isEmpty ? REDACTED : redactSecrets(value);
+  }
+  return out;
+}
+
 export function outputJson(data) {
-  console.log(JSON.stringify(data, null, 2));
+  console.log(JSON.stringify(showSecrets ? data : redactSecrets(data), null, 2));
 }

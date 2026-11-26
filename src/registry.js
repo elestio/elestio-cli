@@ -58,12 +58,16 @@ export const registry = {
     usage: 'login --email <email> --token <token>',
     flags: [
       { name: '--email <email>', summary: 'Account email' },
-      { name: '--token <token>', summary: 'API token from Dashboard > Security' }
+      { name: '--token <token>', summary: 'API token from Dashboard > Security (or set ELESTIO_API_TOKEN)' }
     ],
-    examples: [{ description: 'Authenticate', command: 'elestio login --email you@example.com --token abc123' }],
+    examples: [
+      { description: 'Authenticate', command: 'elestio login --email you@example.com --token abc123' },
+      { description: 'Without the token on the command line', command: 'ELESTIO_API_TOKEN=abc123 elestio login --email you@example.com' }
+    ],
     async run({ args, json }) {
       const { configure } = await load.auth();
-      await configure(args.email || args._[1], args.token || args._[2], json);
+      // ELESTIO_API_TOKEN keeps the token out of the shell history and the process list
+      await configure(args.email || args._[1] || process.env.ELESTIO_EMAIL, args.token || args._[2] || process.env.ELESTIO_API_TOKEN, json);
     }
   },
 
@@ -676,7 +680,7 @@ export const registry = {
         async run({ args }) {
           await (await load.cicd()).addDockerRegistry(
             args.project, args.name || args._[2], args.username || args._[3],
-            args.password, args.url,
+            args.password ?? process.env.ELESTIO_REGISTRY_PASSWORD, args.url,
             args['registry-type'] || args.registryType || 'docker.io',
             args['repo-id'] || args.repoId || '',
             args['gitlab-url'] || args.gitlabUrl || ''
@@ -701,7 +705,8 @@ export const registry = {
 
 function s3Config(args) {
   return {
-    apiKey: args.key, secretKey: args.secret, bucketName: args.bucket,
+    // ELESTIO_S3_KEY / ELESTIO_S3_SECRET keep the credentials out of the shell history
+    apiKey: args.key ?? process.env.ELESTIO_S3_KEY, secretKey: args.secret ?? process.env.ELESTIO_S3_SECRET, bucketName: args.bucket,
     endPoint: args.endpoint, prefix: args.prefix, providerType: args.type
   };
 }

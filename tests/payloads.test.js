@@ -49,17 +49,29 @@ describe('buildGitPipelinePayload', () => {
     repo: 'acme/my-app', branch: 'main', repoID: 12345, authID: '7'
   };
 
-  it('derives repoUrl and cloneUrl from the owner/repo pair', () => {
+  it('names the repo by its provider API URL, the only form the backend creates a webhook for', () => {
     const p = buildGitPipelinePayload(git);
-    expect(p.gitData.repoUrl).toBe('https://github.com/acme/my-app');
+    expect(p.gitData.repoUrl).toBe('https://api.github.com/repos/acme/my-app');
+    expect(p.gitData.repoID).toBe('12345');
     expect(p.gitData.cloneUrl).toBe('https://github.com/acme/my-app.git');
     expect(p.gitData.repo).toBe('my-app');
     expect(p.CICDMode).toBe('GITHUB');
   });
 
-  it('points at gitlab.com for GITLAB pipelines', () => {
-    expect(buildGitPipelinePayload({ ...git, gitType: 'GITLAB' }).gitData.repoUrl)
-      .toBe('https://gitlab.com/acme/my-app');
+  it('uses the GitLab project API URL, by id, for GITLAB pipelines', () => {
+    const p = buildGitPipelinePayload({ ...git, gitType: 'GITLAB' });
+    expect(p.gitData.repoUrl).toBe('https://gitlab.com/api/v4/projects/12345');
+    expect(p.gitData.cloneUrl).toBe('https://gitlab.com/acme/my-app.git');
+  });
+
+  it('refuses an existing repo without its id: that pipeline would never receive pushes', () => {
+    expect(() => buildGitPipelinePayload({ ...git, repoID: undefined })).toThrow(/repoID is required/);
+    expect(() => buildGitPipelinePayload({ ...git, repoID: '' })).toThrow(/repoID is required/);
+  });
+
+  it('lets the backend fill the id of a repo it is about to create', () => {
+    const p = buildGitPipelinePayload({ ...git, repoID: undefined, isNeedToCreateRepo: true });
+    expect(p.gitData.repoID).toBe('');
   });
 
   it('marks createFromTemplate when the repo is generated from a catalog template', () => {

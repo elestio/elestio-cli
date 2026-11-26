@@ -89,6 +89,7 @@ export function renderMainHelp(registry, version) {
   lines.push(
     `${colors.bold}Global Options${colors.reset}`,
     `  ${'--json'.padEnd(width + 2)}Output in JSON format`,
+    `  ${'--show-secrets'.padEnd(width + 2)}Do not mask tokens and secrets in --json output`,
     `  ${'--project <id>'.padEnd(width + 2)}Project ID (overrides the default)`,
     `  ${'--debug'.padEnd(width + 2)}Print full error stack traces`,
     `  ${'--help, -h'.padEnd(width + 2)}Show help`,
